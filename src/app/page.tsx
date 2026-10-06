@@ -13,7 +13,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ChevronDown, ChevronUp, Send, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, AlertCircle, CheckCircle, XCircle, Loader2, Trash2, Copy, Eye, EyeOff } from 'lucide-react';
+import { ChevronDown, ChevronUp, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, AlertCircle, CheckCircle, XCircle, Loader2, Trash2, Copy, Eye, EyeOff, Pencil, Check } from 'lucide-react';
 
 // 生成随机 ID
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -26,6 +26,10 @@ const TOOL_NAME_MAP: Record<string, string> = {
 export default function AgentChatPage() {
   // 身份状态
   const [identity, setIdentity] = useState<Identity>({ userId: '', sessionId: '' });
+
+  // 身份字段编辑状态
+  const [editingIdentityField, setEditingIdentityField] = useState<'userId' | 'sessionId' | null>(null);
+  const [identityDraft, setIdentityDraft] = useState('');
 
   // Generate random identity only on client to avoid SSR hydration mismatch
   useEffect(() => {
@@ -131,6 +135,37 @@ export default function AgentChatPage() {
     addNotification('info', '已重置身份，开始新的会话');
   }, [clearConversation, addNotification]);
 
+  // 开始编辑身份字段
+  const startEditIdentity = useCallback((field: 'userId' | 'sessionId') => {
+    setEditingIdentityField(field);
+    setIdentityDraft(identity[field]);
+  }, [identity]);
+
+  // 提交身份编辑（非空才生效；变更后以新身份重开会话）
+  const commitEditIdentity = useCallback(() => {
+    if (editingIdentityField === null) return;
+    const field = editingIdentityField;
+    const value = identityDraft.trim();
+    setEditingIdentityField(null);
+    setIdentityDraft('');
+    if (!value || value === identity[field]) return;
+
+    clearConversation();
+    setIdentity(prev => ({ ...prev, [field]: value }));
+    addNotification('info', '已更新' + (field === 'userId' ? '用户ID' : '会话ID'));
+  }, [editingIdentityField, identityDraft, identity, clearConversation, addNotification]);
+
+  // 身份编辑框键盘事件
+  const handleIdentityKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitEditIdentity();
+    } else if (e.key === 'Escape') {
+      setEditingIdentityField(null);
+      setIdentityDraft('');
+    }
+  };
+
   // 提交事件
   const submitEvent = useCallback(async (events: Array<{ type: string; payload: Record<string, unknown> }>) => {
     try {
@@ -175,6 +210,15 @@ export default function AgentChatPage() {
       },
     }]);
   }, [inputValue, deepThinking, submitEvent]);
+
+  // 停止生成（中断当前运行）
+  const stopGeneration = useCallback(async () => {
+    addNotification('info', '正在停止...');
+    await submitEvent([{
+      type: 'user.interrupt',
+      payload: {},
+    }]);
+  }, [submitEvent, addNotification]);
 
   // 提交工具确认
   const submitToolConfirmation = useCallback(async (toolCallId: string, toolName: string, allow: boolean) => {
@@ -706,20 +750,62 @@ export default function AgentChatPage() {
         </header>
 
         {/* 身份信息栏 */}
-        <div className="flex items-center gap-4 px-4 py-2 bg-gray-100 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 text-xs">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2 bg-gray-100 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 text-xs">
           <div className="flex items-center gap-2">
             <span className="text-gray-500 dark:text-gray-400">用户ID:</span>
-            <code className="bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded">{identity.userId.slice(0, 16)}...</code>
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyText(identity.userId)}>
-              <Copy className="w-3 h-3" />
-            </Button>
+            {editingIdentityField === 'userId' ? (
+              <>
+                <input
+                  autoFocus
+                  value={identityDraft}
+                  onChange={e => setIdentityDraft(e.target.value)}
+                  onBlur={commitEditIdentity}
+                  onKeyDown={handleIdentityKeyDown}
+                  className="bg-white dark:bg-gray-900 border border-blue-400 rounded px-2 py-0.5 w-44 text-xs outline-none"
+                />
+                <Button variant="ghost" size="icon" className="h-6 w-6" onMouseDown={e => e.preventDefault()} onClick={commitEditIdentity} title="确认">
+                  <Check className="w-3 h-3" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <code className="bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded">{identity.userId}</code>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => startEditIdentity('userId')} title="编辑用户ID">
+                  <Pencil className="w-3 h-3" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyText(identity.userId)} title="复制用户ID">
+                  <Copy className="w-3 h-3" />
+                </Button>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <span className="text-gray-500 dark:text-gray-400">会话ID:</span>
-            <code className="bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded">{identity.sessionId.slice(0, 16)}...</code>
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyText(identity.sessionId)}>
-              <Copy className="w-3 h-3" />
-            </Button>
+            {editingIdentityField === 'sessionId' ? (
+              <>
+                <input
+                  autoFocus
+                  value={identityDraft}
+                  onChange={e => setIdentityDraft(e.target.value)}
+                  onBlur={commitEditIdentity}
+                  onKeyDown={handleIdentityKeyDown}
+                  className="bg-white dark:bg-gray-900 border border-blue-400 rounded px-2 py-0.5 w-44 text-xs outline-none"
+                />
+                <Button variant="ghost" size="icon" className="h-6 w-6" onMouseDown={e => e.preventDefault()} onClick={commitEditIdentity} title="确认">
+                  <Check className="w-3 h-3" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <code className="bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded">{identity.sessionId}</code>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => startEditIdentity('sessionId')} title="编辑会话ID">
+                  <Pencil className="w-3 h-3" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyText(identity.sessionId)} title="复制会话ID">
+                  <Copy className="w-3 h-3" />
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
@@ -930,9 +1016,16 @@ export default function AgentChatPage() {
                     </Button>
                   </div>
                 </div>
-                <Button onClick={sendMessage} disabled={!inputValue.trim() || sseRunning}>
-                  <Send className="w-4 h-4" />
-                </Button>
+                {sseRunning ? (
+                  <Button variant="destructive" onClick={stopGeneration}>
+                    <Square className="w-4 h-4" />
+                    停止
+                  </Button>
+                ) : (
+                  <Button onClick={sendMessage} disabled={!inputValue.trim()}>
+                    <Send className="w-4 h-4" />
+                  </Button>
+                )}
               </div>
               <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
                 <div className="flex items-center gap-2">
