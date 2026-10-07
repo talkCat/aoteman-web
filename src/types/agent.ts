@@ -64,6 +64,8 @@ export interface Thinking {
   isStreaming?: boolean;
   isExpanded?: boolean;
   turnId?: number;
+  /** 持久化事件在同一会话内单调递增，用于和叙述 / 工具一起按时序排列 */
+  seq?: number;
   timestamp?: number;
 }
 

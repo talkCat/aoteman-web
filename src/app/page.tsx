@@ -23,6 +23,152 @@ const TOOL_NAME_MAP: Record<string, string> = {
   ask_followup_questions: '追问问卷',
 };
 
+// 获取工具名称显示
+const getToolDisplayName = (name: string) => TOOL_NAME_MAP[name] || name;
+
+// 一轮内的中间过程步骤（思考 / 叙述 / 工具调用），统一按时序渲染
+type TurnStep =
+  | { kind: 'thinking'; key: string; seq?: number; timestamp: number; thinking: Thinking }
+  | { kind: 'narration'; key: string; seq?: number; timestamp: number; narration: Narration }
+  | { kind: 'tool'; key: string; seq?: number; timestamp: number; tool: ToolUse };
+
+// 按落盘 seq 排序（缺失时按时间戳兜底），还原真实的「思考 → 叙述 → 工具」时序
+function buildTurnSteps(turn: TurnGroup): TurnStep[] {
+  const steps: TurnStep[] = [
+    ...turn.thinking.map(t => ({ kind: 'thinking' as const, key: 'k:' + t.id, seq: t.seq, timestamp: t.timestamp ?? 0, thinking: t })),
+    ...turn.narrations.map(n => ({ kind: 'narration' as const, key: 'n:' + n.id, seq: n.seq, timestamp: n.timestamp ?? 0, narration: n })),
+    ...turn.toolUses.map(t => ({ kind: 'tool' as const, key: 't:' + t.id, seq: t.seq, timestamp: t.timestamp ?? 0, tool: t })),
+  ];
+  return steps.sort((a, b) => {
+    const sa = a.seq ?? Number.MAX_SAFE_INTEGER;
+    const sb = b.seq ?? Number.MAX_SAFE_INTEGER;
+    if (sa !== sb) return sa - sb;
+    return a.timestamp - b.timestamp;
+  });
+}
+
+// 一轮内的「过程」时间线：思考 / 叙述 / 工具按落盘时序交错呈现。
+// 轮次进行中自动展开并跟随最新步骤，轮次结束后自动收成一行摘要（用户手动操作优先）。
+function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [manualOverride, setManualOverride] = useState(false);
+
+  useEffect(() => {
+    if (!manualOverride) setOpen(isActive);
+  }, [isActive, manualOverride]);
+
+  if (steps.length === 0) return null;
+
+  const toolCount = steps.filter(s => s.kind === 'tool').length;
+
+  return (
+    <div className="mb-3">
+      <Collapsible
+        open={open}
+        onOpenChange={(next) => {
+          setManualOverride(true);
+          setOpen(next);
+        }}
+      >
+        <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+          {isActive ? (
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          ) : (
+            <div className="w-0.5 h-4 bg-gray-300 dark:bg-gray-600 rounded-full" />
+          )}
+          <Sparkles className="w-3 h-3" />
+          <span>
+            过程 · {steps.length} 步{toolCount > 0 ? `（含 ${toolCount} 次工具）` : ''}
+          </span>
+          <ChevronDown className={'w-3 h-3 transition-transform ' + (open ? 'rotate-180' : '')} />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="mt-2 space-y-3">
+            {steps.map(step => {
+              if (step.kind === 'thinking') {
+                return (
+                  <div key={step.key} className="ml-2.5 pl-3 border-l-2 border-purple-200 dark:border-purple-800">
+                    <div className="flex items-center gap-1.5 text-[11px] text-purple-400 dark:text-purple-500 mb-1">
+                      <Sparkles className="w-3 h-3" />
+                      <span>思考</span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-pre-wrap">
+                      {step.thinking.content}
+                      {step.thinking.isStreaming && (
+                        <span className="inline-block w-1.5 h-3 bg-purple-300 animate-pulse ml-0.5 align-middle" />
+                      )}
+                    </p>
+                  </div>
+                );
+              }
+              if (step.kind === 'narration') {
+                return (
+                  <div key={step.key} className="ml-2.5 pl-3 border-l-2 border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center gap-1.5 text-[11px] text-gray-400 dark:text-gray-500 mb-1">
+                      <MessageSquareText className="w-3 h-3" />
+                      <span>过程</span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-pre-wrap">
+                      {step.narration.content}
+                    </p>
+                  </div>
+                );
+              }
+              const tool = step.tool;
+              return (
+                <Card key={tool.id} className="p-4 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                  <div className="flex items-center gap-2 mb-2">
+                    {tool.type === 'tool' ? (
+                      <Wrench className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    ) : (
+                      <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    )}
+                    <span className="font-medium text-blue-800 dark:text-blue-200">
+                      {tool.type === 'tool' ? '工具调用' : '技能调用'}: {getToolDisplayName(tool.name)}
+                    </span>
+                    {tool.status === 'success' && <CheckCircle className="w-4 h-4 text-green-500" />}
+                    {tool.status === 'error' && <XCircle className="w-4 h-4 text-red-500" />}
+                    {tool.status === 'pending' && <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />}
+                  </div>
+                  {tool.input && (
+                    <Collapsible defaultOpen={false}>
+                      <CollapsibleTrigger className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
+                        <ChevronDown className="w-3 h-3 inline mr-1" />
+                        输入参数
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <pre className="mt-2 p-2 bg-white dark:bg-gray-800 rounded text-xs overflow-x-auto">
+                          {tool.input}
+                        </pre>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
+                  {tool.output && (() => {
+                    const isLongOutput = tool.output.length > 200;
+                    return (
+                      <Collapsible className="mt-2" defaultOpen={!isLongOutput}>
+                        <CollapsibleTrigger className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
+                          <ChevronDown className="w-3 h-3 inline mr-1" />
+                          输出结果{isLongOutput ? ' (' + tool.output.length + ' 字符)' : ''}
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <pre className="mt-2 p-2 bg-white dark:bg-gray-800 rounded text-xs overflow-x-auto max-h-48">
+                            {isLongOutput ? tool.output.slice(0, 200) + '\n... (点击展开剩余内容)' : tool.output}
+                          </pre>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    );
+                  })()}
+                </Card>
+              );
+            })}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
+  );
+}
+
 export default function AgentChatPage() {
   // 身份状态
   const [identity, setIdentity] = useState<Identity>({ userId: '', sessionId: '' });
@@ -419,6 +565,29 @@ export default function AgentChatPage() {
     }
   }, [scrollToBottom, thinkingExpanded]);
 
+  // 思考段落盘：用权威文本替换正在流式的思考段，并携带落盘 seq 参与时间线排序
+  const handleThinkingFinalize = useCallback((id: string, content: string, seq?: number, turnId?: number) => {
+    if (!id) return;
+    setThinking(prev => {
+      const index = prev.findIndex(t => t.id === id);
+      if (index === -1) {
+        const item: Thinking = { id, content, isStreaming: false, seq, turnId, timestamp: Date.now() };
+        thinkingMapRef.current.set(id, item);
+        return [...prev, item];
+      }
+      const updated = [...prev];
+      updated[index] = {
+        ...updated[index],
+        content,
+        isStreaming: false,
+        seq: seq ?? updated[index].seq,
+        turnId: turnId ?? updated[index].turnId,
+      };
+      thinkingMapRef.current.set(id, updated[index]);
+      return updated;
+    });
+  }, []);
+
   const handleToolUse = useCallback((toolUse: ToolUse) => {
     setToolUses(prev => {
       const existing = prev.find(t => t.id === toolUse.id);
@@ -619,6 +788,7 @@ export default function AgentChatPage() {
       onMessageFinalize: handleMessageFinalize,
       onThinking: handleThinking,
       onThinkingUpdate: handleThinkingUpdate,
+      onThinkingFinalize: handleThinkingFinalize,
       onNarration: handleNarration,
       onMessageRemove: handleMessageRemove,
       onToolUse: handleToolUse,
@@ -654,11 +824,6 @@ export default function AgentChatPage() {
     addNotification('success', '已复制到剪贴板');
   };
 
-  // 获取工具名称显示
-  const getToolDisplayName = (name: string) => {
-    return TOOL_NAME_MAP[name] || name;
-  };
-
   // 获取输入优先展示字段
   const getInputPreview = (input: string) => {
     try {
@@ -669,39 +834,10 @@ export default function AgentChatPage() {
     }
   };
 
-  // 一轮内的中间过程步骤（模型叙述 + 工具调用），统一按时序渲染
-  type TurnStep =
-    | { kind: 'narration'; key: string; seq?: number; timestamp: number; narration: Narration }
-    | { kind: 'tool'; key: string; seq?: number; timestamp: number; tool: ToolUse };
-
-  // 按落盘 seq 排序（缺失时按时间戳兜底），还原真实的「叙述 → 工具 → 叙述 → 工具」时序
-  const buildTurnSteps = (turn: TurnGroup): TurnStep[] => {
-    const steps: TurnStep[] = [
-      ...turn.narrations.map(n => ({
-        kind: 'narration' as const,
-        key: 'n:' + n.id,
-        seq: n.seq,
-        timestamp: n.timestamp ?? 0,
-        narration: n,
-      })),
-      ...turn.toolUses.map(t => ({
-        kind: 'tool' as const,
-        key: 't:' + t.id,
-        seq: t.seq,
-        timestamp: t.timestamp ?? 0,
-        tool: t,
-      })),
-    ];
-    return steps.sort((a, b) => {
-      const sa = a.seq ?? Number.MAX_SAFE_INTEGER;
-      const sb = b.seq ?? Number.MAX_SAFE_INTEGER;
-      if (sa !== sb) return sa - sb;
-      return a.timestamp - b.timestamp;
-    });
-  };
-
   // 追问问卷 / 工具确认：按轮次渲染，找不到归属轮次时兜底在底部
   const turnIdSet = new Set(turns.map(t => t.turnId));
+  // 最新轮次：只有它可能仍在进行，用于「过程」时间线的自动展开 / 收起
+  const lastTurnId = turns.length > 0 ? turns[turns.length - 1].turnId : 0;
   const activeQuestionnaire = followupQuestionnaire && followupQuestionnaire.status === 'pending'
     ? followupQuestionnaire
     : null;
@@ -919,87 +1055,11 @@ export default function AgentChatPage() {
                     </div>
                   ))}
 
-                  {/* 该轮的思考过程 */}
-                  {turn.thinking.length > 0 && (
-                    <div className="mb-3">
-                      <Collapsible defaultOpen={false}>
-                        <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-                          <div className="w-0.5 h-4 bg-purple-300 dark:bg-purple-700 rounded-full" />
-                          <Sparkles className="w-3 h-3" />
-                          <span>思考过程</span>
-                          <ChevronDown className="w-3 h-3" />
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                          <div className="ml-2.5 pl-3 border-l-2 border-purple-200 dark:border-purple-800 text-xs text-gray-500 dark:text-gray-400 whitespace-pre-wrap py-1">
-                            {turn.thinking.map(t => t.content).join('')}
-                            {turn.thinking.some(t => t.isStreaming) && (
-                              <span className="inline-block w-1.5 h-3 bg-purple-300 animate-pulse ml-0.5 align-middle" />
-                            )}
-                          </div>
-                        </CollapsibleContent>
-                      </Collapsible>
-                    </div>
-                  )}
-
-                  {/* 该轮的中间过程：模型叙述与工具调用按落盘时序统一排列 */}
-                  {buildTurnSteps(turn).map(step =>
-                    step.kind === 'narration' ? (
-                      <div key={step.key} className="ml-2.5 mb-3 pl-3 border-l-2 border-gray-200 dark:border-gray-700">
-                        <div className="flex items-center gap-1.5 text-[11px] text-gray-400 dark:text-gray-500 mb-1">
-                          <MessageSquareText className="w-3 h-3" />
-                          <span>过程</span>
-                        </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-pre-wrap">
-                          {step.narration.content}
-                        </p>
-                      </div>
-                    ) : (
-                    <Card key={step.tool.id} className="p-4 mb-3 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-                      <div className="flex items-center gap-2 mb-2">
-                        {step.tool.type === 'tool' ? (
-                          <Wrench className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                        ) : (
-                          <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                        )}
-                        <span className="font-medium text-blue-800 dark:text-blue-200">
-                          {step.tool.type === 'tool' ? '工具调用' : '技能调用'}: {getToolDisplayName(step.tool.name)}
-                        </span>
-                        {step.tool.status === 'success' && <CheckCircle className="w-4 h-4 text-green-500" />}
-                        {step.tool.status === 'error' && <XCircle className="w-4 h-4 text-red-500" />}
-                        {step.tool.status === 'pending' && <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />}
-                      </div>
-                      {step.tool.input && (
-                        <Collapsible defaultOpen={false}>
-                          <CollapsibleTrigger className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
-                            <ChevronDown className="w-3 h-3 inline mr-1" />
-                            输入参数
-                          </CollapsibleTrigger>
-                          <CollapsibleContent>
-                            <pre className="mt-2 p-2 bg-white dark:bg-gray-800 rounded text-xs overflow-x-auto">
-                              {step.tool.input}
-                            </pre>
-                          </CollapsibleContent>
-                        </Collapsible>
-                      )}
-                      {step.tool.output && (() => {
-                        const isLongOutput = step.tool.output.length > 200;
-                        return (
-                          <Collapsible className="mt-2" defaultOpen={!isLongOutput}>
-                            <CollapsibleTrigger className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
-                              <ChevronDown className="w-3 h-3 inline mr-1" />
-                              输出结果{isLongOutput ? ' (' + step.tool.output.length + ' 字符)' : ''}
-                            </CollapsibleTrigger>
-                            <CollapsibleContent>
-                              <pre className="mt-2 p-2 bg-white dark:bg-gray-800 rounded text-xs overflow-x-auto max-h-48">
-                                {isLongOutput ? step.tool.output.slice(0, 200) + '\n... (点击展开剩余内容)' : step.tool.output}
-                              </pre>
-                            </CollapsibleContent>
-                          </Collapsible>
-                        );
-                      })()}
-                    </Card>
-                    )
-                  )}
+                  {/* 该轮的中间过程：思考 / 叙述 / 工具按落盘时序统一排列，最终答复钉在末尾 */}
+                  <ProcessTimeline
+                    steps={buildTurnSteps(turn)}
+                    isActive={turn.turnId === lastTurnId && (isRunning || sseRunning)}
+                  />
 
                   {/* 该轮的追问问卷（按轮次渲染，保持时序） */}
                   {renderQuestionnaire(turn.turnId)}

@@ -10,6 +10,8 @@ interface SSEStreamCallbacks {
   onMessageFinalize?: (id: string, content: string, turnId?: number) => void;
   onThinking?: (thinking: Thinking) => void;
   onThinkingUpdate?: (id: string, content: string) => void;
+  /** 思考段落盘：用权威文本替换流式思考段，并带上落盘 seq 参与时序排序 */
+  onThinkingFinalize?: (id: string, content: string, seq?: number, turnId?: number) => void;
   /** 中间过程叙述：模型在工具调用前输出的过渡说明 */
   onNarration?: (narration: Narration) => void;
   /** 移除一条（尚未落盘的）助理气泡，例如流式内容被判定为中间叙述时 */
@@ -281,6 +283,24 @@ export function useSSEStream(
           });
         }
         addTraceEntry('agent.message', '助手消息完成', payload);
+        break;
+      }
+
+      /* ---------------- 思考过程（落盘） ---------------- */
+      case 'agent.thinking': {
+        const id = String(data.id || payload.event_id || '');
+        if (!markSeen(id)) break;
+        const text = String(payload.text ?? '');
+        if (!text) break;
+        // 段结束：用权威文本替换流式思考段，带上落盘 seq 参与时间线排序。
+        streamingThinkingIdsRef.current.delete(id);
+        callbacksRef.current.onThinkingFinalize?.(
+          id || generateMessageId(),
+          text,
+          toPersistedSeq(data.seq),
+          turnId
+        );
+        addTraceEntry('agent.thinking', text.slice(0, 80), payload);
         break;
       }
 
