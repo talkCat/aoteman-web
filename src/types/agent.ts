@@ -11,6 +11,7 @@ export type SSEEventType =
   | 'agent.event'
   | 'agent.message'
   | 'agent.thinking'
+  | 'agent.narration'
   | 'user.message'
   | 'agent.tool_use'
   | 'agent.tool_result'
@@ -66,6 +67,17 @@ export interface Thinking {
   timestamp?: number;
 }
 
+// 中间过程叙述类型：一次 ReAct 轮次内，模型在发起工具调用之前输出的过渡说明。
+// 它属于「中间执行信息」，不是最终答复，需要与思考过程一样轻量呈现。
+export interface Narration {
+  id: string;
+  content: string;
+  turnId?: number;
+  /** 持久化事件在同一会话内单调递增，用于和工具调用一起按时序排列 */
+  seq?: number;
+  timestamp?: number;
+}
+
 // 工具调用类型
 export interface ToolUse {
   id: string;
@@ -77,6 +89,8 @@ export interface ToolUse {
   output?: string;
   type: 'tool' | 'skill';
   turnId?: number;
+  /** 持久化事件序号，用于与中间叙述一起按轮次内时序排列 */
+  seq?: number;
   timestamp?: number;
 }
 
@@ -136,6 +150,7 @@ export interface TurnGroup {
   turnId: number;
   messages: Message[];
   thinking: Thinking[];
+  narrations: Narration[];
   toolUses: ToolUse[];
   timestamp: number;
 }

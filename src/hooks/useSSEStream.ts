@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import type { SSEEvent, TraceEntry, Message, Thinking, ToolUse, ToolConfirmation } from '@/types/agent';
+import type { SSEEvent, TraceEntry, Message, Thinking, Narration, ToolUse, ToolConfirmation } from '@/types/agent';
 
 interface SSEStreamCallbacks {
   onMessage?: (message: Message) => void;
@@ -10,6 +10,10 @@ interface SSEStreamCallbacks {
   onMessageFinalize?: (id: string, content: string, turnId?: number) => void;
   onThinking?: (thinking: Thinking) => void;
   onThinkingUpdate?: (id: string, content: string) => void;
+  /** 中间过程叙述：模型在工具调用前输出的过渡说明 */
+  onNarration?: (narration: Narration) => void;
+  /** 移除一条（尚未落盘的）助理气泡，例如流式内容被判定为中间叙述时 */
+  onMessageRemove?: (id: string) => void;
   onToolUse?: (toolUse: ToolUse) => void;
   onToolResult?: (toolResult: ToolUse) => void;
   onSkillUse?: (skillUse: ToolUse) => void;
@@ -45,6 +49,7 @@ const STREAM_EVENT_TYPES: string[] = [
   'agent.event',
   'agent.message',
   'agent.thinking',
+  'agent.narration',
   'user.message',
   'agent.tool_use',
   'agent.tool_result',
@@ -95,6 +100,8 @@ export function useSSEStream(
   const streamingMessageIdsRef = useRef<Set<string>>(new Set());
   /** 正在流式输出中的思考 id */
   const streamingThinkingIdsRef = useRef<Set<string>>(new Set());
+  /** 已判定为「中间叙述」的事件 id：这些 id 不应再渲染成助理气泡 */
+  const narrationIdsRef = useRef<Set<string>>(new Set());
   /** 模型侧的 toolCallId -> 前端工具卡片 id(evt_xxx) */
   const toolCallIdToCardIdRef = useRef<Map<string, string>>(new Map());
 
@@ -179,6 +186,8 @@ export function useSSEStream(
         const id = String(payload.event_id || '');
         if (!id) break;
         if (target === 'agent.message') {
+          // 该 id 已被判定为中间叙述：不要再为它新建气泡。
+          if (narrationIdsRef.current.has(id)) break;
           if (streamingMessageIdsRef.current.has(id)) break;
           streamingMessageIdsRef.current.add(id);
           callbacksRef.current.onMessage?.({
@@ -220,6 +229,8 @@ export function useSSEStream(
         const delta = String(payload.delta || '');
         if (!id || !delta) break;
         if (target === 'agent.message') {
+          // 该 id 已被判定为中间叙述：增量不再写入气泡。
+          if (narrationIdsRef.current.has(id)) break;
           callbacksRef.current.onMessageUpdate?.(id, delta);
         } else if (target === 'agent.thinking') {
           callbacksRef.current.onThinkingUpdate?.(id, delta);
@@ -255,6 +266,8 @@ export function useSSEStream(
         const id = String(data.id || payload.event_id || '');
         if (!markSeen(id)) break;
         const text = String(payload.text ?? '');
+        // 该 id 已经作为中间叙述落盘，最终消息不应再重复成气泡。
+        if (narrationIdsRef.current.has(id)) break;
         if (streamingMessageIdsRef.current.has(id)) {
           streamingMessageIdsRef.current.delete(id);
           callbacksRef.current.onMessageFinalize?.(id, text, turnId);
@@ -268,6 +281,30 @@ export function useSSEStream(
           });
         }
         addTraceEntry('agent.message', '助手消息完成', payload);
+        break;
+      }
+
+      /* ---------------- 中间过程叙述 ---------------- */
+      case 'agent.narration': {
+        const id = String(data.id || payload.event_id || '');
+        if (!markSeen(id)) break;
+        const text = String(payload.text ?? '');
+        if (!text) break;
+        // 后端复用了该轮流式助理气泡的事件 id：先撤掉打字中的气泡，
+        // 再以轻量的「中间过程」块呈现，避免同一段文字既当气泡又当过程。
+        narrationIdsRef.current.add(id);
+        if (streamingMessageIdsRef.current.has(id)) {
+          streamingMessageIdsRef.current.delete(id);
+        }
+        callbacksRef.current.onMessageRemove?.(id);
+        callbacksRef.current.onNarration?.({
+          id: id || generateMessageId(),
+          content: text,
+          turnId,
+          seq: toPersistedSeq(data.seq),
+          timestamp: Date.now(),
+        });
+        addTraceEntry('agent.narration', text.slice(0, 80), payload);
         break;
       }
 
@@ -295,6 +332,7 @@ export function useSSEStream(
           type: isSkill ? 'skill' : 'tool',
           status: 'pending',
           turnId,
+          seq: toPersistedSeq(data.seq),
         };
         if (isSkill) {
           callbacksRef.current.onSkillUse?.(toolUse);
@@ -323,6 +361,7 @@ export function useSSEStream(
           status: failed ? 'error' : 'success',
           type: isSkill ? 'skill' : 'tool',
           turnId,
+          seq: toPersistedSeq(data.seq),
         };
         if (isSkill) {
           callbacksRef.current.onSkillResult?.(toolResult);
@@ -470,6 +509,7 @@ export function useSSEStream(
     seenEventIdsRef.current = new Set();
     streamingMessageIdsRef.current = new Set();
     streamingThinkingIdsRef.current = new Set();
+    narrationIdsRef.current = new Set();
     toolCallIdToCardIdRef.current = new Map();
     connect();
     return () => {
@@ -483,6 +523,11 @@ export function useSSEStream(
     disconnect,
     beginUserTurn,
   };
+}
+
+/** 只有真正落盘的事件才带合法的 seq（预览帧固定为 -1），其余一律返回 undefined */
+function toPersistedSeq(value: unknown): number | undefined {
+  return typeof value === 'number' && value >= 0 ? value : undefined;
 }
 
 /** 把工具入参统一渲染成可读字符串 */

@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useSSEStream } from '@/hooks/useSSEStream';
 import { normalizeFollowupInput } from '@/lib/followup';
-import type { Identity, Message, Thinking, ToolUse, ToolConfirmation, FollowupQuestionnaire, TraceEntry, Notification, TurnGroup } from '@/types/agent';
+import type { Identity, Message, Thinking, Narration, ToolUse, ToolConfirmation, FollowupQuestionnaire, TraceEntry, Notification, TurnGroup } from '@/types/agent';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
@@ -13,7 +13,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ChevronDown, ChevronUp, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, AlertCircle, CheckCircle, XCircle, Loader2, Trash2, Copy, Eye, EyeOff, Pencil, Check } from 'lucide-react';
+import { ChevronDown, ChevronUp, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Trash2, Copy, Eye, EyeOff, Pencil, Check } from 'lucide-react';
 
 // 生成随机 ID
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -48,6 +48,9 @@ export default function AgentChatPage() {
   // 思考过程
   const [thinking, setThinking] = useState<Thinking[]>([]);
   const [thinkingExpanded, setThinkingExpanded] = useState(true);
+
+  // 中间过程叙述（工具调用前的模型过渡说明）
+  const [narrations, setNarrations] = useState<Narration[]>([]);
 
   // 工具调用
   const [toolUses, setToolUses] = useState<ToolUse[]>([]);
@@ -116,6 +119,7 @@ export default function AgentChatPage() {
     setPendingUserMessages([]);
     pendingUserRef.current = [];
     setThinking([]);
+    setNarrations([]);
     setToolUses([]);
     setToolConfirmations([]);
     setFollowupQuestionnaire(null);
@@ -363,6 +367,27 @@ export default function AgentChatPage() {
     scrollToBottom();
   }, [scrollToBottom]);
 
+  // 撤掉被打字中的气泡（该段文本已被判定为中间叙述）
+  const handleMessageRemove = useCallback((id: string) => {
+    if (!id) return;
+    setMessages(prev => prev.filter(m => m.id !== id));
+    messageMapRef.current.delete(id);
+  }, []);
+
+  // 中间过程叙述：按事件 id 幂等追加，重连回放不会重复
+  const handleNarration = useCallback((narration: Narration) => {
+    setNarrations(prev => {
+      const index = prev.findIndex(n => n.id === narration.id);
+      if (index === -1) {
+        return [...prev, narration];
+      }
+      const updated = [...prev];
+      updated[index] = { ...updated[index], ...narration };
+      return updated;
+    });
+    scrollToBottom();
+  }, [scrollToBottom]);
+
   const handleThinking = useCallback((thinkingData: Thinking) => {
     const item = { ...thinkingData, timestamp: Date.now() };
     setThinking(prev => [...prev, item]);
@@ -548,34 +573,41 @@ export default function AgentChatPage() {
   // Group conversation items by turnId for chronological rendering
   const turns = useMemo(() => {
     const groupMap = new Map<number, TurnGroup>();
-    
+
+    const ensureGroup = (tid: number, timestamp: number) => {
+      if (!groupMap.has(tid)) {
+        groupMap.set(tid, { turnId: tid, messages: [], thinking: [], narrations: [], toolUses: [], timestamp });
+      }
+      return groupMap.get(tid)!;
+    };
+
     // Group messages by turnId
     messages.forEach(m => {
-      const tid = m.turnId || 0;
-      if (!groupMap.has(tid)) groupMap.set(tid, { turnId: tid, messages: [], thinking: [], toolUses: [], timestamp: m.timestamp });
-      const g = groupMap.get(tid)!;
+      const g = ensureGroup(m.turnId || 0, m.timestamp);
       g.messages.push(m);
       if (m.timestamp < g.timestamp) g.timestamp = m.timestamp;
     });
-    
+
     // Group thinking by turnId
     thinking.forEach(t => {
-      const tid = t.turnId || 0;
-      if (!groupMap.has(tid)) groupMap.set(tid, { turnId: tid, messages: [], thinking: [], toolUses: [], timestamp: t.timestamp || Date.now() });
-      const g = groupMap.get(tid)!;
+      const g = ensureGroup(t.turnId || 0, t.timestamp || Date.now());
       g.thinking.push(t);
     });
-    
+
+    // Group intermediate narrations by turnId
+    narrations.forEach(n => {
+      const g = ensureGroup(n.turnId || 0, n.timestamp || Date.now());
+      g.narrations.push(n);
+    });
+
     // Group toolUses by turnId
     toolUses.forEach(tu => {
-      const tid = tu.turnId || 0;
-      if (!groupMap.has(tid)) groupMap.set(tid, { turnId: tid, messages: [], thinking: [], toolUses: [], timestamp: tu.timestamp || Date.now() });
-      const g = groupMap.get(tid)!;
+      const g = ensureGroup(tu.turnId || 0, tu.timestamp || Date.now());
       g.toolUses.push(tu);
     });
-    
+
     return Array.from(groupMap.values()).sort((a, b) => a.timestamp - b.timestamp);
-  }, [messages, thinking, toolUses]);
+  }, [messages, thinking, narrations, toolUses]);
 
   // SSE 连接
   const { isConnected, isRunning: sseRunning, beginUserTurn } = useSSEStream(
@@ -587,6 +619,8 @@ export default function AgentChatPage() {
       onMessageFinalize: handleMessageFinalize,
       onThinking: handleThinking,
       onThinkingUpdate: handleThinkingUpdate,
+      onNarration: handleNarration,
+      onMessageRemove: handleMessageRemove,
       onToolUse: handleToolUse,
       onToolResult: handleToolResult,
       onSkillUse: handleSkillUse,
@@ -633,6 +667,37 @@ export default function AgentChatPage() {
     } catch {
       return input;
     }
+  };
+
+  // 一轮内的中间过程步骤（模型叙述 + 工具调用），统一按时序渲染
+  type TurnStep =
+    | { kind: 'narration'; key: string; seq?: number; timestamp: number; narration: Narration }
+    | { kind: 'tool'; key: string; seq?: number; timestamp: number; tool: ToolUse };
+
+  // 按落盘 seq 排序（缺失时按时间戳兜底），还原真实的「叙述 → 工具 → 叙述 → 工具」时序
+  const buildTurnSteps = (turn: TurnGroup): TurnStep[] => {
+    const steps: TurnStep[] = [
+      ...turn.narrations.map(n => ({
+        kind: 'narration' as const,
+        key: 'n:' + n.id,
+        seq: n.seq,
+        timestamp: n.timestamp ?? 0,
+        narration: n,
+      })),
+      ...turn.toolUses.map(t => ({
+        kind: 'tool' as const,
+        key: 't:' + t.id,
+        seq: t.seq,
+        timestamp: t.timestamp ?? 0,
+        tool: t,
+      })),
+    ];
+    return steps.sort((a, b) => {
+      const sa = a.seq ?? Number.MAX_SAFE_INTEGER;
+      const sb = b.seq ?? Number.MAX_SAFE_INTEGER;
+      if (sa !== sb) return sa - sb;
+      return a.timestamp - b.timestamp;
+    });
   };
 
   // 追问问卷 / 工具确认：按轮次渲染，找不到归属轮次时兜底在底部
@@ -876,23 +941,34 @@ export default function AgentChatPage() {
                     </div>
                   )}
 
-                  {/* 该轮的工具调用 */}
-                  {turn.toolUses.map(tool => (
-                    <Card key={tool.id} className="p-4 mb-3 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                  {/* 该轮的中间过程：模型叙述与工具调用按落盘时序统一排列 */}
+                  {buildTurnSteps(turn).map(step =>
+                    step.kind === 'narration' ? (
+                      <div key={step.key} className="ml-2.5 mb-3 pl-3 border-l-2 border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center gap-1.5 text-[11px] text-gray-400 dark:text-gray-500 mb-1">
+                          <MessageSquareText className="w-3 h-3" />
+                          <span>过程</span>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-pre-wrap">
+                          {step.narration.content}
+                        </p>
+                      </div>
+                    ) : (
+                    <Card key={step.tool.id} className="p-4 mb-3 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
                       <div className="flex items-center gap-2 mb-2">
-                        {tool.type === 'tool' ? (
+                        {step.tool.type === 'tool' ? (
                           <Wrench className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                         ) : (
                           <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                         )}
                         <span className="font-medium text-blue-800 dark:text-blue-200">
-                          {tool.type === 'tool' ? '工具调用' : '技能调用'}: {getToolDisplayName(tool.name)}
+                          {step.tool.type === 'tool' ? '工具调用' : '技能调用'}: {getToolDisplayName(step.tool.name)}
                         </span>
-                        {tool.status === 'success' && <CheckCircle className="w-4 h-4 text-green-500" />}
-                        {tool.status === 'error' && <XCircle className="w-4 h-4 text-red-500" />}
-                        {tool.status === 'pending' && <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />}
+                        {step.tool.status === 'success' && <CheckCircle className="w-4 h-4 text-green-500" />}
+                        {step.tool.status === 'error' && <XCircle className="w-4 h-4 text-red-500" />}
+                        {step.tool.status === 'pending' && <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />}
                       </div>
-                      {tool.input && (
+                      {step.tool.input && (
                         <Collapsible defaultOpen={false}>
                           <CollapsibleTrigger className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
                             <ChevronDown className="w-3 h-3 inline mr-1" />
@@ -900,29 +976,30 @@ export default function AgentChatPage() {
                           </CollapsibleTrigger>
                           <CollapsibleContent>
                             <pre className="mt-2 p-2 bg-white dark:bg-gray-800 rounded text-xs overflow-x-auto">
-                              {tool.input}
+                              {step.tool.input}
                             </pre>
                           </CollapsibleContent>
                         </Collapsible>
                       )}
-                      {tool.output && (() => {
-                        const isLongOutput = tool.output.length > 200;
+                      {step.tool.output && (() => {
+                        const isLongOutput = step.tool.output.length > 200;
                         return (
                           <Collapsible className="mt-2" defaultOpen={!isLongOutput}>
                             <CollapsibleTrigger className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
                               <ChevronDown className="w-3 h-3 inline mr-1" />
-                              输出结果{isLongOutput ? ' (' + tool.output.length + ' 字符)' : ''}
+                              输出结果{isLongOutput ? ' (' + step.tool.output.length + ' 字符)' : ''}
                             </CollapsibleTrigger>
                             <CollapsibleContent>
                               <pre className="mt-2 p-2 bg-white dark:bg-gray-800 rounded text-xs overflow-x-auto max-h-48">
-                                {isLongOutput ? tool.output.slice(0, 200) + '\n... (点击展开剩余内容)' : tool.output}
+                                {isLongOutput ? step.tool.output.slice(0, 200) + '\n... (点击展开剩余内容)' : step.tool.output}
                               </pre>
                             </CollapsibleContent>
                           </Collapsible>
                         );
                       })()}
                     </Card>
-                  ))}
+                    )
+                  )}
 
                   {/* 该轮的追问问卷（按轮次渲染，保持时序） */}
                   {renderQuestionnaire(turn.turnId)}
