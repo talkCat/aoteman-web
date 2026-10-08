@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useTheme } from 'next-themes';
 import { useSSEStream } from '@/hooks/useSSEStream';
 import { normalizeFollowupInput } from '@/lib/followup';
 import type { Identity, Message, Thinking, Narration, ToolUse, ToolConfirmation, FollowupQuestionnaire, TraceEntry, Notification, TurnGroup } from '@/types/agent';
@@ -12,8 +13,8 @@ import { Card } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ChevronDown, ChevronUp, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Trash2, Copy, Eye, EyeOff, Pencil, Check } from 'lucide-react';
+import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
+import { ChevronDown, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Copy, Eye, EyeOff, Pencil, Check } from 'lucide-react';
 
 // 生成随机 ID
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -70,32 +71,32 @@ function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boo
           setOpen(next);
         }}
       >
-        <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+        <CollapsibleTrigger className="group flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
           {isActive ? (
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
           ) : (
-            <div className="w-0.5 h-4 bg-gray-300 dark:bg-gray-600 rounded-full" />
+            <div className="h-4 w-0.5 rounded-full bg-border" />
           )}
-          <Sparkles className="w-3 h-3" />
+          <Sparkles className="h-3 w-3" />
           <span>
             过程 · {steps.length} 步{toolCount > 0 ? `（含 ${toolCount} 次工具）` : ''}
           </span>
-          <ChevronDown className={'w-3 h-3 transition-transform ' + (open ? 'rotate-180' : '')} />
+          <ChevronDown className={'h-3 w-3 transition-transform ' + (open ? 'rotate-180' : '')} />
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="mt-2 space-y-3">
+          <div className="mt-2.5 space-y-3">
             {steps.map(step => {
               if (step.kind === 'thinking') {
                 return (
-                  <div key={step.key} className="ml-2.5 pl-3 border-l-2 border-purple-200 dark:border-purple-800">
-                    <div className="flex items-center gap-1.5 text-[11px] text-purple-400 dark:text-purple-500 mb-1">
-                      <Sparkles className="w-3 h-3" />
+                  <div key={step.key} className="ml-0.5 border-l-2 border-thinking/40 pl-3">
+                    <div className="mb-1 flex items-center gap-1.5 text-[11px] text-thinking">
+                      <Sparkles className="h-3 w-3" />
                       <span>思考</span>
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-pre-wrap">
+                    <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
                       {step.thinking.content}
                       {step.thinking.isStreaming && (
-                        <span className="inline-block w-1.5 h-3 bg-purple-300 animate-pulse ml-0.5 align-middle" />
+                        <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse rounded-sm bg-thinking align-middle" />
                       )}
                     </p>
                   </div>
@@ -103,41 +104,45 @@ function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boo
               }
               if (step.kind === 'narration') {
                 return (
-                  <div key={step.key} className="ml-2.5 pl-3 border-l-2 border-gray-200 dark:border-gray-700">
-                    <div className="flex items-center gap-1.5 text-[11px] text-gray-400 dark:text-gray-500 mb-1">
-                      <MessageSquareText className="w-3 h-3" />
+                  <div key={step.key} className="ml-0.5 border-l-2 border-border pl-3">
+                    <div className="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
+                      <MessageSquareText className="h-3 w-3" />
                       <span>过程</span>
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-pre-wrap">
+                    <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
                       {step.narration.content}
                     </p>
                   </div>
                 );
               }
               const tool = step.tool;
+              const isSkill = tool.type === 'skill';
               return (
-                <Card key={tool.id} className="p-4 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-                  <div className="flex items-center gap-2 mb-2">
-                    {tool.type === 'tool' ? (
-                      <Wrench className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <Card
+                  key={tool.id}
+                  className={`rounded-xl p-3.5 ${isSkill ? 'border-skill/25 bg-skill/5' : 'border-border bg-secondary/40'}`}
+                >
+                  <div className="mb-2 flex items-center gap-2">
+                    {isSkill ? (
+                      <Sparkles className="h-4 w-4 text-skill" />
                     ) : (
-                      <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                      <Wrench className="h-4 w-4 text-tool" />
                     )}
-                    <span className="font-medium text-blue-800 dark:text-blue-200">
-                      {tool.type === 'tool' ? '工具调用' : '技能调用'}: {getToolDisplayName(tool.name)}
+                    <span className="text-sm font-medium text-foreground">
+                      {isSkill ? '技能调用' : '工具调用'}: {getToolDisplayName(tool.name)}
                     </span>
-                    {tool.status === 'success' && <CheckCircle className="w-4 h-4 text-green-500" />}
-                    {tool.status === 'error' && <XCircle className="w-4 h-4 text-red-500" />}
-                    {tool.status === 'pending' && <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />}
+                    {tool.status === 'success' && <CheckCircle className="h-4 w-4 text-success" />}
+                    {tool.status === 'error' && <XCircle className="h-4 w-4 text-destructive" />}
+                    {tool.status === 'pending' && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                   </div>
                   {tool.input && (
                     <Collapsible defaultOpen={false}>
-                      <CollapsibleTrigger className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
-                        <ChevronDown className="w-3 h-3 inline mr-1" />
+                      <CollapsibleTrigger className="text-xs text-muted-foreground transition-colors hover:text-foreground">
+                        <ChevronDown className="mr-1 inline h-3 w-3" />
                         输入参数
                       </CollapsibleTrigger>
                       <CollapsibleContent>
-                        <pre className="mt-2 p-2 bg-white dark:bg-gray-800 rounded text-xs overflow-x-auto">
+                        <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-background/60 p-2 font-mono text-xs tabular-nums">
                           {tool.input}
                         </pre>
                       </CollapsibleContent>
@@ -147,12 +152,12 @@ function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boo
                     const isLongOutput = tool.output.length > 200;
                     return (
                       <Collapsible className="mt-2" defaultOpen={!isLongOutput}>
-                        <CollapsibleTrigger className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
-                          <ChevronDown className="w-3 h-3 inline mr-1" />
+                        <CollapsibleTrigger className="text-xs text-muted-foreground transition-colors hover:text-foreground">
+                          <ChevronDown className="mr-1 inline h-3 w-3" />
                           输出结果{isLongOutput ? ' (' + tool.output.length + ' 字符)' : ''}
                         </CollapsibleTrigger>
                         <CollapsibleContent>
-                          <pre className="mt-2 p-2 bg-white dark:bg-gray-800 rounded text-xs overflow-x-auto max-h-48">
+                          <pre className="mt-2 max-h-48 overflow-x-auto rounded-md border border-border bg-background/60 p-2 font-mono text-xs tabular-nums">
                             {isLongOutput ? tool.output.slice(0, 200) + '\n... (点击展开剩余内容)' : tool.output}
                           </pre>
                         </CollapsibleContent>
@@ -168,8 +173,18 @@ function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boo
     </div>
   );
 }
-
 export default function AgentChatPage() {
+  // 主题（统一到 next-themes，移除本地 theme state 与手动 class 切换）
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  const isDark = mounted && resolvedTheme === 'dark';
+  const toggleTheme = useCallback(() => {
+    setTheme(isDark ? 'light' : 'dark');
+  }, [isDark, setTheme]);
+
   // 身份状态
   const [identity, setIdentity] = useState<Identity>({ userId: '', sessionId: '' });
 
@@ -223,9 +238,6 @@ export default function AgentChatPage() {
   const [inputValue, setInputValue] = useState('');
   const [deepThinking, setDeepThinking] = useState(false);
 
-  // 主题
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
-
   // 消息映射用于流式更新
   const messageMapRef = useRef<Map<string, Message>>(new Map());
   const thinkingMapRef = useRef<Map<string, Thinking>>(new Map());
@@ -244,6 +256,15 @@ export default function AgentChatPage() {
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
+
+  // 输入框自适应高度（上限 160px）
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  }, [inputValue]);
 
   // 添加通知
   const addNotification = useCallback((type: Notification['type'], message: string) => {
@@ -429,7 +450,6 @@ export default function AgentChatPage() {
       turnId: nextTurnId,
     }]);
 
-
     await submitEvent([{
       type: 'user.tool_result',
       payload: {
@@ -444,7 +464,6 @@ export default function AgentChatPage() {
     setFollowupQuestionnaire(null);
     addNotification('success', '追问答案已提交');
   }, [followupQuestionnaire, submitEvent, addNotification, deepThinking]);
-
   // SSE 回调
   const handleMessage = useCallback((message: Message) => {
     // SSE 回显的用户消息：先移除本地乐观占位，避免「显示两遍」
@@ -686,7 +705,6 @@ export default function AgentChatPage() {
       }, 0);
     }
   }, [showTrace]);
-
   // 处理追问工具：同一张问卷只渲染一次，提交后不再重建。
   // 关键：必须从未处理的工具里挑选，否则第二轮问卷会被第一轮已处理的工具挡住。
   useEffect(() => {
@@ -731,13 +749,6 @@ export default function AgentChatPage() {
     handledFollowupIdsRef.current.add(askFollowupTool.id);
     addNotification('warning', '追问问卷解析失败，请重新发起追问');
   }, [toolUses, followupQuestionnaire, addNotification]);
-
-  // 切换主题
-  const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-    document.documentElement.classList.toggle('dark', newTheme === 'dark');
-  };
 
   // Group conversation items by turnId for chronological rendering
   const turns = useMemo(() => {
@@ -850,14 +861,14 @@ export default function AgentChatPage() {
     if (!activeQuestionnaire) return null;
     if (turnId !== undefined && activeQuestionnaire.turnId !== turnId) return null;
     return (
-      <Card className="p-4 mb-3 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
-        <h3 className="font-medium text-green-800 dark:text-green-200 mb-3 flex items-center gap-2">
-          <Sparkles className="w-4 h-4" />
+      <Card className="mb-3 rounded-xl border-border bg-secondary/30 p-4">
+        <h3 className="mb-3 flex items-center gap-2 font-medium text-foreground">
+          <Sparkles className="h-4 w-4 text-skill" />
           追问问卷
         </h3>
         {activeQuestionnaire.questions.map((q, qIndex) => (
           <div key={qIndex} className="mb-4">
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <p className="mb-2 text-sm font-medium text-foreground">
               {qIndex + 1}. {q.question}
             </p>
             <div className="flex flex-wrap gap-2">
@@ -870,6 +881,7 @@ export default function AgentChatPage() {
                     key={oIndex}
                     size="sm"
                     variant={selected ? 'default' : 'outline'}
+                    className="gap-1.5"
                     onClick={() => {
                       setFollowupQuestionnaire(prev => prev ? {
                         ...prev,
@@ -877,6 +889,7 @@ export default function AgentChatPage() {
                       } : null);
                     }}
                   >
+                    {selected && <Check className="h-3.5 w-3.5" />}
                     {optionLabel}
                   </Button>
                 );
@@ -896,15 +909,15 @@ export default function AgentChatPage() {
   };
 
   const renderConfirmationCard = (confirmation: ToolConfirmation) => (
-    <Card key={confirmation.toolCallId} className="p-4 mb-3 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800">
-      <div className="flex items-center gap-2 mb-2">
-        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-        <span className="font-medium text-amber-800 dark:text-amber-200">
+    <Card key={confirmation.toolCallId} className="mb-3 rounded-xl border-border bg-secondary/30 p-4">
+      <div className="mb-2 flex items-center gap-2">
+        <AlertCircle className="h-4 w-4 text-warning" />
+        <span className="font-medium text-foreground">
           需要确认: {confirmation.toolName}
         </span>
       </div>
-      <div className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-        <span className="font-medium">输入: </span>
+      <div className="mb-3 text-sm text-muted-foreground">
+        <span className="font-medium text-foreground">输入: </span>
         {getInputPreview(JSON.stringify(confirmation.input))}
       </div>
       <div className="flex gap-2">
@@ -925,331 +938,294 @@ export default function AgentChatPage() {
     </Card>
   );
 
+  // 身份信息（收进 hover 展开的小徽标，不占主视线）
+  const renderIdentityField = (field: 'userId' | 'sessionId', label: string) => {
+    const editing = editingIdentityField === field;
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">{label}</span>
+          {!editing && (
+            <div className="flex items-center gap-0.5">
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEditIdentity(field)} title={`编辑${label}`}>
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copyText(identity[field])} title={`复制${label}`}>
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
+        </div>
+        {editing ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              autoFocus
+              value={identityDraft}
+              onChange={e => setIdentityDraft(e.target.value)}
+              onBlur={commitEditIdentity}
+              onKeyDown={handleIdentityKeyDown}
+              className="min-w-0 flex-1 rounded-md border border-primary/40 bg-background px-2 py-1.5 font-mono text-xs outline-none"
+            />
+            <Button variant="ghost" size="icon" className="h-7 w-7" onMouseDown={e => e.preventDefault()} onClick={commitEditIdentity} title="确认">
+              <Check className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ) : (
+          <code className="block w-full truncate rounded-md bg-muted px-2 py-1.5 font-mono text-xs text-muted-foreground">
+            {identity[field]}
+          </code>
+        )}
+      </div>
+    );
+  };
   return (
-    <div className={`min-h-screen flex flex-col ${theme === 'dark' ? 'dark' : ''}`}>
-      <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-        {/* 顶部栏 */}
-        <header className="flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3">
-            <Bot className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-            <h1 className="text-lg font-semibold">智能体对话</h1>
-            <Badge variant={isConnected ? 'default' : 'secondary'} className="text-xs">
-              {isConnected ? '已连接' : '未连接'}
-            </Badge>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={toggleTheme}>
-              {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setShowTrace(!showTrace)}>
-              <Eye className="w-4 h-4" />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={resetIdentity}>
-              <RotateCcw className="w-4 h-4" />
-            </Button>
-          </div>
-        </header>
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
+      <a
+        href="#chat-main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:shadow-card focus:ring-2 focus:ring-ring"
+      >
+        跳到对话区
+      </a>
 
-        {/* 身份信息栏 */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2 bg-gray-100 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="text-gray-500 dark:text-gray-400">用户ID:</span>
-            {editingIdentityField === 'userId' ? (
-              <>
-                <input
-                  autoFocus
-                  value={identityDraft}
-                  onChange={e => setIdentityDraft(e.target.value)}
-                  onBlur={commitEditIdentity}
-                  onKeyDown={handleIdentityKeyDown}
-                  className="bg-white dark:bg-gray-900 border border-blue-400 rounded px-2 py-0.5 w-44 text-xs outline-none"
-                />
-                <Button variant="ghost" size="icon" className="h-6 w-6" onMouseDown={e => e.preventDefault()} onClick={commitEditIdentity} title="确认">
-                  <Check className="w-3 h-3" />
-                </Button>
-              </>
-            ) : (
-              <>
-                <code className="bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded">{identity.userId}</code>
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => startEditIdentity('userId')} title="编辑用户ID">
-                  <Pencil className="w-3 h-3" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyText(identity.userId)} title="复制用户ID">
-                  <Copy className="w-3 h-3" />
-                </Button>
-              </>
-            )}
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-border/60 bg-background/80 px-4 backdrop-blur">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Bot className="h-5 w-5" />
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-gray-500 dark:text-gray-400">会话ID:</span>
-            {editingIdentityField === 'sessionId' ? (
-              <>
-                <input
-                  autoFocus
-                  value={identityDraft}
-                  onChange={e => setIdentityDraft(e.target.value)}
-                  onBlur={commitEditIdentity}
-                  onKeyDown={handleIdentityKeyDown}
-                  className="bg-white dark:bg-gray-900 border border-blue-400 rounded px-2 py-0.5 w-44 text-xs outline-none"
-                />
-                <Button variant="ghost" size="icon" className="h-6 w-6" onMouseDown={e => e.preventDefault()} onClick={commitEditIdentity} title="确认">
-                  <Check className="w-3 h-3" />
-                </Button>
-              </>
-            ) : (
-              <>
-                <code className="bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded">{identity.sessionId}</code>
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => startEditIdentity('sessionId')} title="编辑会话ID">
-                  <Pencil className="w-3 h-3" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyText(identity.sessionId)} title="复制会话ID">
-                  <Copy className="w-3 h-3" />
-                </Button>
-              </>
-            )}
-          </div>
+          <h1 className="text-sm font-semibold tracking-tight">智能体工作台</h1>
+          <span className={`ml-1 hidden items-center gap-1.5 rounded-full border border-border/60 bg-card px-2 py-0.5 text-[11px] text-muted-foreground sm:inline-flex`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${isConnected ? 'bg-success' : 'bg-muted-foreground/50'}`} />
+            {isConnected ? '已连接' : '未连接'}
+          </span>
         </div>
 
-        {/* 主内容区 */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* 对话区域 */}
-          <div className="flex-1 flex flex-col">
-            <ScrollArea className="flex-1 p-4">
-              {/* 空状态 */}
+        <div className="flex items-center gap-1">
+          <HoverCard>
+            <HoverCardTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-9 w-9" title="身份信息" aria-label="身份信息">
+                <User className="h-4 w-4" />
+              </Button>
+            </HoverCardTrigger>
+            <HoverCardContent align="end" className="w-72">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">身份信息</span>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={resetIdentity} title="重置身份">
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                {renderIdentityField('userId', '用户ID')}
+                {renderIdentityField('sessionId', '会话ID')}
+              </div>
+            </HoverCardContent>
+          </HoverCard>
+
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setShowTrace(!showTrace)} title="TRACE 调试">
+            <Eye className="h-4 w-4" />
+          </Button>
+
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={resetIdentity} title="重置身份">
+            <RotateCcw className="h-4 w-4" />
+          </Button>
+
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={toggleTheme} title={isDark ? '浅色模式' : '深色模式'}>
+            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </Button>
+        </div>
+      </header>
+      <div className="flex flex-1 overflow-hidden" id="chat-main">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <ScrollArea className="flex-1">
+            <div className="mx-auto w-full max-w-3xl px-4 py-6">
               {messages.length === 0 && !sseRunning && (
-                <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500">
-                  <Bot className="w-16 h-16 mb-4 opacity-50" />
-                  <p>发送一条消息开始对话</p>
+                <div className="flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary text-muted-foreground">
+                    <Bot className="h-8 w-8" />
+                  </div>
+                  <p className="text-sm">开始一段对话</p>
+                  <p className="mt-1 text-xs text-muted-foreground/70">输入消息，让智能体为你处理事务与信息查询</p>
                 </div>
               )}
 
-
-              {/* 按轮次渲染对话 */}
-              {turns.map((turn) => (
+              {turns.map(turn => (
                 <div key={turn.turnId} className="mb-6">
-                  {/* 轮次分隔线 */}
                   {turn.turnId > 0 && (
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
-                      <span className="text-xs text-gray-400 dark:text-gray-500">第 {turn.turnId} 轮</span>
-                      <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="h-px flex-1 bg-border" />
+                      <span className="text-xs text-muted-foreground">第 {turn.turnId} 轮</span>
+                      <div className="h-px flex-1 bg-border" />
                     </div>
                   )}
 
-                  {/* 该轮的用户消息 */}
-                  {turn.messages.filter(m => m.type === 'user').map((message) => (
-                    <div key={message.id} className={'flex justify-end mb-4'}>
-                      <div className="flex items-start gap-3 max-w-[80%]">
-                        <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
-                          <User className="w-4 h-4 text-white" />
-                        </div>
-                        <div className="text-right max-w-[70%]">
-                          <div className="inline-block px-4 py-2 rounded-lg bg-blue-500 text-white">
-                            <p className="whitespace-pre-wrap">{message.content}</p>
-                            {message.isStreaming && (
-                              <span className="inline-block w-2 h-4 bg-white/60 animate-pulse ml-1" />
-                            )}
-                          </div>
+                  {turn.messages
+                    .filter(m => m.type === 'user')
+                    .map(message => (
+                      <div key={message.id} className="mb-4 flex justify-end animate-message-in">
+                        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-primary-foreground shadow-soft sm:max-w-[80%]">
+                          <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+                          {message.isStreaming && (
+                            <span className="ml-1 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-primary-foreground/70 align-middle" />
+                          )}
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
 
-                  {/* 该轮的中间过程：思考 / 叙述 / 工具按落盘时序统一排列，最终答复钉在末尾 */}
                   <ProcessTimeline
                     steps={buildTurnSteps(turn)}
                     isActive={turn.turnId === lastTurnId && (isRunning || sseRunning)}
                   />
 
-                  {/* 该轮的追问问卷（按轮次渲染，保持时序） */}
                   {renderQuestionnaire(turn.turnId)}
 
-                  {/* 该轮的工具确认（按轮次渲染，保持时序） */}
                   {pendingConfirmations.filter(tc => tc.turnId === turn.turnId).map(renderConfirmationCard)}
 
-                  {/* 该轮的 AI 回复 */}
-                  {turn.messages.filter(m => m.type === 'assistant').map((message) => (
-                    <div key={message.id} className="flex justify-start mb-4">
-                      <div className="flex items-start gap-3 max-w-[80%]">
-                        <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
-                          <Bot className="w-4 h-4 text-gray-600 dark:text-gray-300" />
-                        </div>
-                        <div className="max-w-[70%]">
-                          <div className="inline-block px-4 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                            <p className="whitespace-pre-wrap">{message.content}</p>
-                            {message.isStreaming && (
-                              <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse ml-1" />
-                            )}
-                          </div>
+                  {turn.messages
+                    .filter(m => m.type === 'assistant')
+                    .map(message => (
+                      <div key={message.id} className="mb-4 flex justify-start animate-message-in">
+                        <div className="max-w-[85%] rounded-2xl rounded-tl-md border border-border/60 bg-card px-4 py-2.5 shadow-soft sm:max-w-[80%]">
+                          <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+                          {message.isStreaming && (
+                            <span className="ml-1 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-muted-foreground align-middle" />
+                          )}
                         </div>
                       </div>
-                    </div>
-                  ))}
-
+                    ))}
                 </div>
               ))}
 
-              {/* 本地乐观显示的用户消息（SSE 回显到达后移除） */}
-              {pendingUserMessages.map((pending) => (
-                <div key={pending.id} className="flex justify-end mb-4">
-                  <div className="flex items-start gap-3 max-w-[80%]">
-                    <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
-                      <User className="w-4 h-4 text-white" />
-                    </div>
-                    <div className="text-right max-w-[70%]">
-                      <div className="inline-block px-4 py-2 rounded-lg bg-blue-500 text-white opacity-70">
-                        <p className="whitespace-pre-wrap">{pending.content}</p>
-                      </div>
-                    </div>
+              {pendingUserMessages.map(pending => (
+                <div key={pending.id} className="mb-4 flex justify-end animate-message-in">
+                  <div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary/80 px-4 py-2.5 text-primary-foreground opacity-70 shadow-soft sm:max-w-[80%]">
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{pending.content}</p>
                   </div>
                 </div>
               ))}
 
-{/* 加载指示器 */}
               {sseRunning && messages.length === 0 && (
-                <div className="flex items-center gap-2 text-gray-500">
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                <div className="flex items-center gap-2 px-1 py-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   <span>正在处理...</span>
                 </div>
               )}
 
-              <div ref={messagesEndRef} />
-            
-            {/* 兜底：未归属到具体轮次的追问问卷 / 工具确认 */}
-            {activeQuestionnaire && (activeQuestionnaire.turnId == null || !turnIdSet.has(activeQuestionnaire.turnId)) && (
-              <div className="px-4">
-                {renderQuestionnaire()}
-              </div>
-            )}
-            {pendingConfirmations.some(tc => tc.turnId == null || !turnIdSet.has(tc.turnId)) && (
-              <div className="px-4">
-                {pendingConfirmations
-                  .filter(tc => tc.turnId == null || !turnIdSet.has(tc.turnId))
-                  .map(renderConfirmationCard)}
-              </div>
-            )}
-            </ScrollArea>
+              {activeQuestionnaire && (activeQuestionnaire.turnId == null || !turnIdSet.has(activeQuestionnaire.turnId)) && (
+                <div>{renderQuestionnaire()}</div>
+              )}
+              {pendingConfirmations.some(tc => tc.turnId == null || !turnIdSet.has(tc.turnId)) && (
+                <div>
+                  {pendingConfirmations
+                    .filter(tc => tc.turnId == null || !turnIdSet.has(tc.turnId))
+                    .map(renderConfirmationCard)}
+                </div>
+              )}
 
-            {/* 输入区 */}
-            <div className="p-4 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
-              <div className="flex items-end gap-3">
-                <div className="flex-1 relative">
+              <div ref={messagesEndRef} />
+            </div>
+          </ScrollArea>
+          <div className="border-t border-border/60 bg-background/80 px-4 pb-4 pt-3 backdrop-blur">
+            <div className="mx-auto w-full max-w-3xl">
+              <div className="rounded-2xl border border-border bg-card p-2 shadow-float">
+                <div className="flex items-end gap-2">
                   <Textarea
+                    ref={textareaRef}
                     value={inputValue}
                     onChange={e => setInputValue(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="输入消息..."
-                    className="min-h-[44px] max-h-[200px] resize-none pr-12"
                     rows={1}
+                    className="min-h-[44px] max-h-[160px] flex-1 resize-none border-0 bg-transparent px-2 py-2.5 text-sm shadow-none focus-visible:ring-0"
                   />
-                  <div className="absolute bottom-2 right-2 flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => setDeepThinking(!deepThinking)}
-                    >
-                      <Sparkles className={`w-4 h-4 ${deepThinking ? 'text-purple-500' : ''}`} />
+                  {sseRunning ? (
+                    <Button variant="destructive" className="h-11 shrink-0 px-4" onClick={stopGeneration}>
+                      <Square className="h-4 w-4" />
+                      <span className="ml-1.5">停止</span>
                     </Button>
+                  ) : (
+                    <Button className="h-11 w-11 shrink-0" onClick={sendMessage} disabled={!inputValue.trim()} title="发送" aria-label="发送">
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-4 px-1 pt-1.5 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <Switch id="deep-thinking" checked={deepThinking} onCheckedChange={setDeepThinking} />
+                    <Label htmlFor="deep-thinking" className="cursor-pointer text-xs">深度思考</Label>
                   </div>
+                  <span className="hidden sm:block">Enter 发送 · Shift+Enter 换行</span>
                 </div>
-                {sseRunning ? (
-                  <Button variant="destructive" onClick={stopGeneration}>
-                    <Square className="w-4 h-4" />
-                    停止
-                  </Button>
-                ) : (
-                  <Button onClick={sendMessage} disabled={!inputValue.trim()}>
-                    <Send className="w-4 h-4" />
-                  </Button>
-                )}
-              </div>
-              <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id="deep-thinking"
-                    checked={deepThinking}
-                    onCheckedChange={setDeepThinking}
-                  />
-                  <Label htmlFor="deep-thinking" className="cursor-pointer">
-                    深度思考
-                  </Label>
-                </div>
-                <span>Enter 发送, Shift+Enter 换行</span>
               </div>
             </div>
           </div>
-
-          {/* TRACE 面板 */}
-          {showTrace && (
-            <div className="w-80 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col">
-              <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-                <span className="font-medium text-sm">TRACE 调试</span>
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowTrace(false)}>
-                  <EyeOff className="w-3 h-3" />
-                </Button>
-              </div>
-              <ScrollArea className="flex-1 p-2" ref={traceScrollRef}>
-                {traceEntries.map(entry => (
-                  <div key={entry.id} className="text-xs p-2 border-b border-gray-100 dark:border-gray-700">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">{entry.type}</Badge>
-                      <span className="text-gray-500">{entry.summary}</span>
-                    </div>
-                    {Boolean(entry.payload) && (
-                      <Collapsible className="mt-1">
-                        <CollapsibleTrigger className="text-xs text-blue-500 hover:text-blue-600">
-                          详情
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                          <pre className="mt-1 p-1 bg-gray-100 dark:bg-gray-900 rounded text-xs overflow-x-auto max-h-32">
-                            {JSON.stringify(entry.payload, null, 2)}
-                          </pre>
-                        </CollapsibleContent>
-                      </Collapsible>
-                    )}
-                  </div>
-                ))}
-              </ScrollArea>
-            </div>
-          )}
         </div>
 
-        {/* 通知区域 */}
-        {notifications.length > 0 && (
-          <div className="fixed bottom-20 right-4 flex flex-col gap-2 z-50">
-            {notifications.map(notification => (
-              <div
-                key={notification.id}
-                className={`px-4 py-2 rounded-lg shadow-lg text-sm ${
-                  notification.type === 'error' ? 'bg-red-500 text-white' :
-                  notification.type === 'success' ? 'bg-green-500 text-white' :
-                  notification.type === 'warning' ? 'bg-amber-500 text-white' :
-                  'bg-gray-800 text-white'
-                }`}
-              >
-                {notification.message}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* 错误提示 */}
-        {error && (
-          <div className="fixed top-20 left-1/2 transform -translate-x-1/2 px-4 py-2 bg-red-500 text-white rounded-lg shadow-lg text-sm z-50">
-            <AlertCircle className="w-4 h-4 inline mr-2" />
-            {error}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="ml-2 h-6 text-white hover:text-white hover:bg-red-600"
-              onClick={() => setError(null)}
-            >
-              <XCircle className="w-4 h-4" />
-            </Button>
+        {showTrace && (
+          <div className="flex w-80 flex-col border-l border-border bg-card">
+            <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+              <span className="text-sm font-medium">TRACE 调试</span>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowTrace(false)}>
+                <EyeOff className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <ScrollArea className="flex-1 p-2" ref={traceScrollRef}>
+              {traceEntries.map(entry => (
+                <div key={entry.id} className="border-b border-border/60 p-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-[11px]">{entry.type}</Badge>
+                    <span className="text-muted-foreground">{entry.summary}</span>
+                  </div>
+                  {Boolean(entry.payload) && (
+                    <Collapsible className="mt-1">
+                      <CollapsibleTrigger className="text-xs text-skill hover:text-skill/80">详情</CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <pre className="mt-1 max-h-32 overflow-x-auto rounded-md bg-secondary p-1.5 font-mono text-xs">
+                          {JSON.stringify(entry.payload, null, 2)}
+                        </pre>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
+                </div>
+              ))}
+            </ScrollArea>
           </div>
         )}
       </div>
+
+      {notifications.length > 0 && (
+        <div className="fixed bottom-20 right-4 z-50 flex flex-col gap-2">
+          {notifications.map(notification => (
+            <div
+              key={notification.id}
+              className={`rounded-xl px-4 py-2.5 text-sm text-white shadow-card ${
+                notification.type === 'error'
+                  ? 'bg-destructive'
+                  : notification.type === 'success'
+                    ? 'bg-success'
+                    : notification.type === 'warning'
+                      ? 'bg-warning'
+                      : 'bg-foreground'
+              }`}
+            >
+              {notification.message}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && (
+        <div className="fixed left-1/2 top-20 z-50 flex -translate-x-1/2 items-center gap-2 rounded-xl bg-destructive px-4 py-2.5 text-sm text-white shadow-card">
+          <AlertCircle className="h-4 w-4" />
+          {error}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="ml-1 h-6 w-6 text-white hover:bg-white/20 hover:text-white"
+            onClick={() => setError(null)}
+          >
+            <XCircle className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

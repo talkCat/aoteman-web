@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Zoer.ai",
-  description: "Zoer.ai",
+  title: "Aoteman Agent · 智能体工作台",
+  description: "面向个人与开发者的 AI 智能体工作台：对话、工具调用、技能与过程追踪。",
 };
 
 export default function RootLayout({
@@ -34,9 +34,15 @@ export default function RootLayout({
   );
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="zh-CN" suppressHydrationWarning>
+      <head>
+        <link
+          rel="icon"
+          href={`data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>`}
+        />
+      </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased `}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Toaster />
         <ThemeProvider
