@@ -8,6 +8,7 @@ node_modules
 !.env.example
 *.log
 *.tsbuildinfo
+token.txt
 check.cjs
 bun.lock
 pnpm-lock.yaml

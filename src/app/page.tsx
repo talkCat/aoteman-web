@@ -14,7 +14,11 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
-import { ChevronDown, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Copy, Eye, EyeOff, Pencil, Check } from 'lucide-react';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { SessionSidebar } from '@/components/SessionSidebar';
+import { TurnAnchorRail } from '@/components/TurnAnchorRail';
+import { Markdown } from '@/components/Markdown';
+import { ChevronDown, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Copy, Eye, EyeOff, Pencil, Check, Menu } from 'lucide-react';
 
 // 生成随机 ID
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -48,8 +52,96 @@ function buildTurnSteps(turn: TurnGroup): TurnStep[] {
   });
 }
 
-// 一轮内的「过程」时间线：思考 / 叙述 / 工具按落盘时序交错呈现。
-// 轮次进行中自动展开并跟随最新步骤，轮次结束后自动收成一行摘要（用户手动操作优先）。
+// 从工具入参里提取一个可读的主参数，供折叠态直接显示「做了什么」
+const TOOL_ARG_KEYS = ['path', 'file_path', 'file', 'target', 'url', 'query', 'pattern', 'prompt', 'command', 'name'];
+function getToolAction(name: string, input: string): { display: string; arg?: string } {
+  const display = getToolDisplayName(name);
+  if (!input) return { display };
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    const p = JSON.parse(input);
+    if (p && typeof p === 'object' && !Array.isArray(p)) parsed = p as Record<string, unknown>;
+  } catch {
+    parsed = null;
+  }
+  if (!parsed) return { display };
+  for (const key of TOOL_ARG_KEYS) {
+    const value = parsed[key];
+    if (typeof value === 'string' && value.trim()) {
+      const summarized = value.trim().replace(/\s+/g, ' ');
+      return { display, arg: summarized.length > 60 ? summarized.slice(0, 60) + '…' : summarized };
+    }
+  }
+  return { display };
+}
+
+function ToolStatusIcon({ status }: { status?: ToolUse['status'] }) {
+  if (status === 'success') {
+    return <CheckCircle className="h-3.5 w-3.5 shrink-0 text-success" aria-label="成功" />;
+  }
+  if (status === 'error') {
+    return <XCircle className="h-3.5 w-3.5 shrink-0 text-destructive" aria-label="失败" />;
+  }
+  return <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" aria-label="进行中" />;
+}
+
+// 单个工具 / 技能调用：去卡片，收敛为时间线上的一行「动作句」，
+// 默认只显示「名称 · 主参数 + 状态」，展开后才显示输入 / 输出（无底色无边框）。
+function ToolStep({ tool }: { tool: ToolUse }) {
+  const [open, setOpen] = useState(false);
+  const isSkill = tool.type === 'skill';
+  const { display, arg } = getToolAction(tool.name, tool.input);
+  const hasDetails = Boolean(tool.input || tool.output);
+
+  return (
+    <div className={`ml-0.5 border-l-2 pl-3 ${isSkill ? 'border-skill/40' : 'border-tool/40'}`}>
+      <button
+        type="button"
+        onClick={() => hasDetails && setOpen(prev => !prev)}
+        disabled={!hasDetails}
+        aria-expanded={hasDetails ? open : undefined}
+        className={`flex w-full items-center gap-2 text-left ${hasDetails ? 'cursor-pointer' : 'cursor-default'}`}
+      >
+        {isSkill ? (
+          <Sparkles className="h-3.5 w-3.5 shrink-0 text-skill" />
+        ) : (
+          <Wrench className="h-3.5 w-3.5 shrink-0 text-tool" />
+        )}
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+          {display}
+          {arg && <span className="font-normal text-muted-foreground"> · {arg}</span>}
+        </span>
+        <span className="shrink-0 text-[11px] text-muted-foreground/70">{isSkill ? '技能' : '工具'}</span>
+        <ToolStatusIcon status={tool.status} />
+        {hasDetails && (
+          <ChevronDown className={`h-3 w-3 shrink-0 text-muted-foreground/60 transition-transform ${open ? 'rotate-180' : ''}`} />
+        )}
+      </button>
+      {hasDetails && open && (
+        <div className="mt-2 space-y-2">
+          {tool.input && (
+            <div>
+              <div className="mb-0.5 text-[11px] text-muted-foreground/70">输入</div>
+              <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground">{tool.input}</pre>
+            </div>
+          )}
+          {tool.output && (
+            <div>
+              <div className="mb-0.5 text-[11px] text-muted-foreground/70">
+                输出{tool.output.length > 200 ? `（${tool.output.length} 字符）` : ''}
+              </div>
+              <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground">{tool.output}</pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 一轮内的「过程」时间线。
+// 叙述（narration）是用户纠偏的关键信号，始终可见，不随过程折叠；
+// 思考 / 工具等机制细节收进可折叠的「过程」块，轮次进行中自动展开。
 function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boolean }) {
   const [open, setOpen] = useState(false);
   const [manualOverride, setManualOverride] = useState(false);
@@ -60,116 +152,72 @@ function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boo
 
   if (steps.length === 0) return null;
 
-  const toolCount = steps.filter(s => s.kind === 'tool').length;
+  const narrations = steps.filter((s): s is Extract<TurnStep, { kind: 'narration' }> => s.kind === 'narration');
+  const mechanics = steps.filter(s => s.kind !== 'narration');
+  const toolCount = mechanics.filter(s => s.kind === 'tool').length;
 
   return (
-    <div className="mb-3">
-      <Collapsible
-        open={open}
-        onOpenChange={(next) => {
-          setManualOverride(true);
-          setOpen(next);
-        }}
-      >
-        <CollapsibleTrigger className="group flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
-          {isActive ? (
-            <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
-          ) : (
-            <div className="h-4 w-0.5 rounded-full bg-border" />
-          )}
-          <Sparkles className="h-3 w-3" />
-          <span>
-            过程 · {steps.length} 步{toolCount > 0 ? `（含 ${toolCount} 次工具）` : ''}
-          </span>
-          <ChevronDown className={'h-3 w-3 transition-transform ' + (open ? 'rotate-180' : '')} />
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="mt-2.5 space-y-3">
-            {steps.map(step => {
-              if (step.kind === 'thinking') {
-                return (
-                  <div key={step.key} className="ml-0.5 border-l-2 border-thinking/40 pl-3">
-                    <div className="mb-1 flex items-center gap-1.5 text-[11px] text-thinking">
-                      <Sparkles className="h-3 w-3" />
-                      <span>思考</span>
-                    </div>
-                    <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
-                      {step.thinking.content}
-                      {step.thinking.isStreaming && (
-                        <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse rounded-sm bg-thinking align-middle" />
-                      )}
-                    </p>
-                  </div>
-                );
-              }
-              if (step.kind === 'narration') {
-                return (
-                  <div key={step.key} className="ml-0.5 border-l-2 border-border pl-3">
-                    <div className="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
-                      <MessageSquareText className="h-3 w-3" />
-                      <span>过程</span>
-                    </div>
-                    <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
-                      {step.narration.content}
-                    </p>
-                  </div>
-                );
-              }
-              const tool = step.tool;
-              const isSkill = tool.type === 'skill';
-              return (
-                <Card
-                  key={tool.id}
-                  className={`rounded-xl p-3.5 ${isSkill ? 'border-skill/25 bg-skill/5' : 'border-border bg-secondary/40'}`}
-                >
-                  <div className="mb-2 flex items-center gap-2">
-                    {isSkill ? (
-                      <Sparkles className="h-4 w-4 text-skill" />
-                    ) : (
-                      <Wrench className="h-4 w-4 text-tool" />
-                    )}
-                    <span className="text-sm font-medium text-foreground">
-                      {isSkill ? '技能调用' : '工具调用'}: {getToolDisplayName(tool.name)}
-                    </span>
-                    {tool.status === 'success' && <CheckCircle className="h-4 w-4 text-success" />}
-                    {tool.status === 'error' && <XCircle className="h-4 w-4 text-destructive" />}
-                    {tool.status === 'pending' && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-                  </div>
-                  {tool.input && (
-                    <Collapsible defaultOpen={false}>
-                      <CollapsibleTrigger className="text-xs text-muted-foreground transition-colors hover:text-foreground">
-                        <ChevronDown className="mr-1 inline h-3 w-3" />
-                        输入参数
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-background/60 p-2 font-mono text-xs tabular-nums">
-                          {tool.input}
-                        </pre>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  )}
-                  {tool.output && (() => {
-                    const isLongOutput = tool.output.length > 200;
-                    return (
-                      <Collapsible className="mt-2" defaultOpen={!isLongOutput}>
-                        <CollapsibleTrigger className="text-xs text-muted-foreground transition-colors hover:text-foreground">
-                          <ChevronDown className="mr-1 inline h-3 w-3" />
-                          输出结果{isLongOutput ? ' (' + tool.output.length + ' 字符)' : ''}
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                          <pre className="mt-2 max-h-48 overflow-x-auto rounded-md border border-border bg-background/60 p-2 font-mono text-xs tabular-nums">
-                            {isLongOutput ? tool.output.slice(0, 200) + '\n... (点击展开剩余内容)' : tool.output}
-                          </pre>
-                        </CollapsibleContent>
-                      </Collapsible>
-                    );
-                  })()}
-                </Card>
-              );
-            })}
+    <div className="mb-4 space-y-2.5">
+      {narrations.map(step => (
+        <div key={step.key} className="ml-0.5 border-l-2 border-border pl-3">
+          <div className="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
+            <MessageSquareText className="h-3 w-3" />
+            <span>过程</span>
           </div>
-        </CollapsibleContent>
-      </Collapsible>
+          <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+            {step.narration.content}
+          </p>
+        </div>
+      ))}
+
+      {mechanics.length > 0 && (
+        <Collapsible
+          open={open}
+          onOpenChange={(next) => {
+            setManualOverride(true);
+            setOpen(next);
+          }}
+        >
+          <CollapsibleTrigger className="group flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
+            {isActive ? (
+              <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+            ) : (
+              <div className="h-4 w-0.5 rounded-full bg-border" />
+            )}
+            <Sparkles className="h-3 w-3" />
+            <span>
+              过程 · {mechanics.length} 步{toolCount > 0 ? `（含 ${toolCount} 次工具）` : ''}
+            </span>
+            <ChevronDown className={'h-3 w-3 transition-transform ' + (open ? 'rotate-180' : '')} />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="mt-2.5 space-y-3">
+              {mechanics.map(step => {
+                if (step.kind === 'thinking') {
+                  return (
+                    <div key={step.key} className="ml-0.5 border-l-2 border-thinking/40 pl-3">
+                      <div className="mb-1 flex items-center gap-1.5 text-[11px] text-thinking">
+                        <Sparkles className="h-3 w-3" />
+                        <span>思考</span>
+                      </div>
+                      <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                        {step.thinking.content}
+                        {step.thinking.isStreaming && (
+                          <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse rounded-sm bg-thinking align-middle" />
+                        )}
+                      </p>
+                    </div>
+                  );
+                }
+                if (step.kind === 'tool') {
+                  return <ToolStep key={step.key} tool={step.tool} />;
+                }
+                return null;
+              })}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
     </div>
   );
 }
@@ -226,6 +274,11 @@ export default function AgentChatPage() {
   const [traceEntries, setTraceEntries] = useState<TraceEntry[]>([]);
   const [showTrace, setShowTrace] = useState(false);
   const traceScrollRef = useRef<HTMLDivElement>(null);
+
+  // 移动端会话导航抽屉 + 轮次锚点高亮
+  const [showToc, setShowToc] = useState(false);
+  const [activeTurnId, setActiveTurnId] = useState<number | null>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // 通知
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -789,6 +842,41 @@ export default function AgentChatPage() {
     return Array.from(groupMap.values()).sort((a, b) => a.timestamp - b.timestamp);
   }, [messages, thinking, narrations, toolUses]);
 
+  // 轮次序号集合，作为 scroll spy 的重建依据
+  const turnIdsKey = useMemo(() => turns.map(t => t.turnId).join(','), [turns]);
+
+  // 滚动到指定轮次：轮次容器带 scroll-mt，避免被 sticky header 遮挡
+  const scrollToTurn = useCallback((turnId: number) => {
+    const target = document.getElementById(`turn-${turnId}`);
+    if (!target) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    target.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    setActiveTurnId(turnId);
+    setShowToc(false);
+  }, []);
+
+  // 滚动监听：高亮当前所在轮次（Radix 视口作为观察根，顶部留 15% 触发带）
+  useEffect(() => {
+    const viewport = scrollAreaRef.current?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]');
+    if (!viewport) return;
+    const targets = Array.from(viewport.querySelectorAll<HTMLElement>('[data-turn-id]'));
+    if (targets.length === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter(e => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible[0]) {
+          const id = Number(visible[0].target.getAttribute('data-turn-id'));
+          if (!Number.isNaN(id)) setActiveTurnId(id);
+        }
+      },
+      { root: viewport, rootMargin: '-15% 0px -75% 0px', threshold: 0 },
+    );
+    targets.forEach(t => observer.observe(t));
+    return () => observer.disconnect();
+  }, [turnIdsKey]);
+
   // SSE 连接
   const { isConnected, isRunning: sseRunning, beginUserTurn } = useSSEStream(
     identity.sessionId,
@@ -979,7 +1067,7 @@ export default function AgentChatPage() {
     );
   };
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
+    <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
       <a
         href="#chat-main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:shadow-card focus:ring-2 focus:ring-ring"
@@ -1000,6 +1088,17 @@ export default function AgentChatPage() {
         </div>
 
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 lg:hidden"
+            onClick={() => setShowToc(true)}
+            title="会话导航"
+            aria-label="会话导航"
+          >
+            <Menu className="h-4 w-4" />
+          </Button>
+
           <HoverCard>
             <HoverCardTrigger asChild>
               <Button variant="ghost" size="icon" className="h-9 w-9" title="身份信息" aria-label="身份信息">
@@ -1034,8 +1133,15 @@ export default function AgentChatPage() {
         </div>
       </header>
       <div className="flex flex-1 overflow-hidden" id="chat-main">
+        <SessionSidebar className="hidden lg:flex" />
+        <TurnAnchorRail
+          turns={turns}
+          activeTurnId={activeTurnId}
+          onSelect={scrollToTurn}
+          className="hidden lg:flex"
+        />
         <div className="flex min-w-0 flex-1 flex-col">
-          <ScrollArea className="flex-1">
+          <ScrollArea className="min-h-0 flex-1" ref={scrollAreaRef}>
             <div className="mx-auto w-full max-w-3xl px-4 py-6">
               {messages.length === 0 && !sseRunning && (
                 <div className="flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
@@ -1048,7 +1154,12 @@ export default function AgentChatPage() {
               )}
 
               {turns.map(turn => (
-                <div key={turn.turnId} className="mb-6">
+                <div
+                  key={turn.turnId}
+                  id={`turn-${turn.turnId}`}
+                  data-turn-id={turn.turnId}
+                  className="mb-6 scroll-mt-20"
+                >
                   {turn.turnId > 0 && (
                     <div className="mb-4 flex items-center gap-3">
                       <div className="h-px flex-1 bg-border" />
@@ -1082,13 +1193,17 @@ export default function AgentChatPage() {
                   {turn.messages
                     .filter(m => m.type === 'assistant')
                     .map(message => (
-                      <div key={message.id} className="mb-4 flex justify-start animate-message-in">
-                        <div className="max-w-[85%] rounded-2xl rounded-tl-md border border-border/60 bg-card px-4 py-2.5 shadow-soft sm:max-w-[80%]">
-                          <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
-                          {message.isStreaming && (
-                            <span className="ml-1 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-muted-foreground align-middle" />
-                          )}
+                      <div key={message.id} className="mb-5 animate-message-in">
+                        <div className="mb-1.5 flex items-center gap-2 text-muted-foreground">
+                          <span className="flex h-5 w-5 items-center justify-center rounded-md bg-primary/10 text-primary">
+                            <Bot className="h-3 w-3" />
+                          </span>
+                          <span className="text-[11px] font-medium">智能体</span>
                         </div>
+                        <Markdown
+                          content={message.isStreaming ? `${message.content}▍` : message.content}
+                          className="break-words"
+                        />
                       </div>
                     ))}
                 </div>
@@ -1167,7 +1282,7 @@ export default function AgentChatPage() {
                 <EyeOff className="h-3.5 w-3.5" />
               </Button>
             </div>
-            <ScrollArea className="flex-1 p-2" ref={traceScrollRef}>
+            <ScrollArea className="min-h-0 flex-1 p-2" ref={traceScrollRef}>
               {traceEntries.map(entry => (
                 <div key={entry.id} className="border-b border-border/60 p-2 text-xs">
                   <div className="flex items-center gap-2">
@@ -1190,6 +1305,13 @@ export default function AgentChatPage() {
           </div>
         )}
       </div>
+
+      <Sheet open={showToc} onOpenChange={setShowToc}>
+        <SheetContent side="left" className="w-60 p-0">
+          <SheetTitle className="sr-only">项目与历史对话</SheetTitle>
+          <SessionSidebar className="h-full w-full border-r-0" />
+        </SheetContent>
+      </Sheet>
 
       {notifications.length > 0 && (
         <div className="fixed bottom-20 right-4 z-50 flex flex-col gap-2">
