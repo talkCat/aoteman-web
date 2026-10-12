@@ -391,7 +391,7 @@ export default function AgentChatPage() {
   };
 
   // 提交事件
-  const submitEvent = useCallback(async (events: Array<{ type: string; payload: Record<string, unknown> }>) => {
+  const submitEvent = useCallback(async (events: Array<{ type: string; payload: Record<string, unknown> }>): Promise<boolean> => {
     try {
       const response = await fetch(`/api/sessions/${identity.sessionId}/events`, {
         method: 'POST',
@@ -405,10 +405,12 @@ export default function AgentChatPage() {
       if (!response.ok) {
         throw new Error(`提交失败: ${response.status}`);
       }
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : '提交失败';
       setError(message);
       addNotification('error', message);
+      return false;
     }
   }, [identity, addNotification]);
 
@@ -490,6 +492,20 @@ export default function AgentChatPage() {
       answer,
     }));
 
+    const submitted = await submitEvent([{
+      type: 'user.tool_result',
+      payload: {
+        // 必须是模型侧的 toolCallId，卡片 id 是前端事件 id，后端无法匹配
+        tool_use_id: followupQuestionnaire.toolCallId || followupQuestionnaire.id,
+        name: 'ask_followup_questions',
+        content: JSON.stringify(answers),
+        deepThinking,
+      },
+    }]);
+    // 只有后端真正接收后才推进轮次并收起问卷；409 / 网络异常时保留问卷供重试，
+    // 避免「答案没提交成功但界面已经前进」的假死状态。
+    if (!submitted) return;
+
     // 提交答案即开启新一轮，否则第二轮的问卷与工具会并入上一轮
     const nextTurnId = beginUserTurnRef.current?.();
 
@@ -501,17 +517,6 @@ export default function AgentChatPage() {
       content: readable,
       timestamp: Date.now(),
       turnId: nextTurnId,
-    }]);
-
-    await submitEvent([{
-      type: 'user.tool_result',
-      payload: {
-        // 必须是模型侧的 toolCallId，卡片 id 是前端事件 id，后端无法匹配
-        tool_use_id: followupQuestionnaire.toolCallId || followupQuestionnaire.id,
-        name: 'ask_followup_questions',
-        content: JSON.stringify(answers),
-        deepThinking,
-      },
     }]);
 
     setFollowupQuestionnaire(null);

@@ -373,12 +373,24 @@ export function useSSEStream(
           toolCallIdToCardIdRef.current.get(toolCallId) || resultEventId || toolCallId;
         const stateText = String(payload.state || payload.status || '').toLowerCase();
         const failed = stateText === 'error' || stateText === 'failed';
+        // 外部工具（如 ask_followup_questions）挂起时会先返回 state=RUNNING +
+        // output="[Awaiting external execution]" 的占位结果；等待用户作答期间它并不是
+        // 成功终态。若这里误判为 success，追问工具会被标记为已处理，随后真正 pending
+        // 的 tool_use 到达也不会再渲染问卷，页面就会永久卡住。
+        const pending =
+          stateText === 'running' ||
+          stateText === 'pending' ||
+          stateText === 'awaiting' ||
+          stateText === 'awaiting_external_execution';
+        const rawOutput = String(payload.output ?? payload.text ?? '');
+        // 隐藏框架内部占位文案，避免把 [Awaiting external execution] 当成业务输出展示。
+        const isAwaitingExternal = rawOutput.trim() === '[Awaiting external execution]';
         const toolResult: ToolUse = {
           id: cardId,
           name: String(payload.name || payload.toolName || 'Tool'),
           input: '',
-          output: String(payload.output ?? payload.text ?? ''),
-          status: failed ? 'error' : 'success',
+          output: isAwaitingExternal ? '' : rawOutput,
+          status: failed ? 'error' : pending ? 'pending' : 'success',
           type: isSkill ? 'skill' : 'tool',
           turnId,
           seq: toPersistedSeq(data.seq),
