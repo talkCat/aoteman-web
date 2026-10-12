@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useTheme } from 'next-themes';
 import { useSSEStream } from '@/hooks/useSSEStream';
 import { normalizeFollowupInput } from '@/lib/followup';
-import type { Identity, Message, Thinking, Narration, ToolUse, ToolConfirmation, FollowupQuestionnaire, TraceEntry, Notification, TurnGroup } from '@/types/agent';
+import type { Identity, Message, Thinking, Narration, ToolUse, ToolConfirmation, FollowupQuestionnaire, FollowupAnswer, TraceEntry, Notification, TurnGroup } from '@/types/agent';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
@@ -35,6 +35,7 @@ const getToolDisplayName = (name: string) => TOOL_NAME_MAP[name] || name;
 type TurnStep =
   | { kind: 'thinking'; key: string; seq?: number; timestamp: number; thinking: Thinking }
   | { kind: 'narration'; key: string; seq?: number; timestamp: number; narration: Narration }
+  | { kind: 'answer'; key: string; seq?: number; timestamp: number; answer: FollowupAnswer }
   | { kind: 'tool'; key: string; seq?: number; timestamp: number; tool: ToolUse };
 
 // 按落盘 seq 排序（缺失时按时间戳兜底），还原真实的「思考 → 叙述 → 工具」时序
@@ -43,6 +44,7 @@ function buildTurnSteps(turn: TurnGroup): TurnStep[] {
     ...turn.thinking.map(t => ({ kind: 'thinking' as const, key: 'k:' + t.id, seq: t.seq, timestamp: t.timestamp ?? 0, thinking: t })),
     ...turn.narrations.map(n => ({ kind: 'narration' as const, key: 'n:' + n.id, seq: n.seq, timestamp: n.timestamp ?? 0, narration: n })),
     ...turn.toolUses.map(t => ({ kind: 'tool' as const, key: 't:' + t.id, seq: t.seq, timestamp: t.timestamp ?? 0, tool: t })),
+    ...turn.answers.map(a => ({ kind: 'answer' as const, key: 'a:' + a.id, seq: a.seq, timestamp: a.timestamp ?? 0, answer: a })),
   ];
   return steps.sort((a, b) => {
     const sa = a.seq ?? Number.MAX_SAFE_INTEGER;
@@ -153,7 +155,8 @@ function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boo
   if (steps.length === 0) return null;
 
   const narrations = steps.filter((s): s is Extract<TurnStep, { kind: 'narration' }> => s.kind === 'narration');
-  const mechanics = steps.filter(s => s.kind !== 'narration');
+  const answers = steps.filter((s): s is Extract<TurnStep, { kind: 'answer' }> => s.kind === 'answer');
+  const mechanics = steps.filter(s => s.kind !== 'narration' && s.kind !== 'answer');
   const toolCount = mechanics.filter(s => s.kind === 'tool').length;
 
   return (
@@ -166,6 +169,18 @@ function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boo
           </div>
           <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
             {step.narration.content}
+          </p>
+        </div>
+      ))}
+
+      {answers.map(step => (
+        <div key={step.key} className="ml-0.5 border-l-2 border-primary/40 pl-3">
+          <div className="mb-1 flex items-center gap-1.5 text-[11px] text-primary/80">
+            <User className="h-3 w-3" />
+            <span>你的选择</span>
+          </div>
+          <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+            {step.answer.content}
           </p>
         </div>
       ))}
@@ -260,6 +275,8 @@ export default function AgentChatPage() {
 
   // 中间过程叙述（工具调用前的模型过渡说明）
   const [narrations, setNarrations] = useState<Narration[]>([]);
+  // 追问答案摘要（作为中间过程展示，不渲染为独立用户气泡）
+  const [followupAnswers, setFollowupAnswers] = useState<FollowupAnswer[]>([]);
 
   // 工具调用
   const [toolUses, setToolUses] = useState<ToolUse[]>([]);
@@ -340,6 +357,7 @@ export default function AgentChatPage() {
     pendingUserRef.current = [];
     setThinking([]);
     setNarrations([]);
+    setFollowupAnswers([]);
     setToolUses([]);
     setToolConfirmations([]);
     setFollowupQuestionnaire(null);
@@ -507,16 +525,15 @@ export default function AgentChatPage() {
     if (!submitted) return;
 
     // 提交答案即开启新一轮，否则第二轮的问卷与工具会并入上一轮
-    const nextTurnId = beginUserTurnRef.current?.();
+    beginUserTurnRef.current?.();
 
     // 前端只展示可读文案，原始 JSON 仅用于回传后端
-    const readable = answers.map(a => a.question + '：' + a.answer).join('\n');
-    setMessages(prev => [...prev, {
+    const readable = answers.map((a, i) => `${i + 1}. ${a.question}：${a.answer}`).join('\n');
+    setFollowupAnswers(prev => [...prev, {
       id: generateId(),
-      type: 'user',
       content: readable,
+      turnId: followupQuestionnaire.turnId,
       timestamp: Date.now(),
-      turnId: nextTurnId,
     }]);
 
     setFollowupQuestionnaire(null);
@@ -814,7 +831,7 @@ export default function AgentChatPage() {
 
     const ensureGroup = (tid: number, timestamp: number) => {
       if (!groupMap.has(tid)) {
-        groupMap.set(tid, { turnId: tid, messages: [], thinking: [], narrations: [], toolUses: [], timestamp });
+        groupMap.set(tid, { turnId: tid, messages: [], thinking: [], narrations: [], toolUses: [], answers: [], timestamp });
       }
       return groupMap.get(tid)!;
     };
@@ -844,8 +861,14 @@ export default function AgentChatPage() {
       g.toolUses.push(tu);
     });
 
+    // Group followup answers by turnId
+    followupAnswers.forEach(a => {
+      const g = ensureGroup(a.turnId || 0, a.timestamp || Date.now());
+      g.answers.push(a);
+    });
+
     return Array.from(groupMap.values()).sort((a, b) => a.timestamp - b.timestamp);
-  }, [messages, thinking, narrations, toolUses]);
+  }, [messages, thinking, narrations, toolUses, followupAnswers]);
 
   // 轮次序号集合，作为 scroll spy 的重建依据
   const turnIdsKey = useMemo(() => turns.map(t => t.turnId).join(','), [turns]);

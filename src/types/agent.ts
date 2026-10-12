@@ -130,6 +130,18 @@ export interface FollowupQuestionnaire {
   turnId?: number;
 }
 
+// 追问答案摘要：用户提交后的选择，作为「中间过程」而非独立气泡展示
+export interface FollowupAnswer {
+  id: string;
+  /** 人类可读的答案摘要，例如「1. 出行时间：寒假」 */
+  content: string;
+  /** 该答案所属轮次 */
+  turnId?: number;
+  /** 用于与叙述 / 工具一起按时序排序 */
+  seq?: number;
+  timestamp?: number;
+}
+
 // TRACE 条目类型
 export interface TraceEntry {
   id: string;
@@ -154,5 +166,6 @@ export interface TurnGroup {
   thinking: Thinking[];
   narrations: Narration[];
   toolUses: ToolUse[];
+  answers: FollowupAnswer[];
   timestamp: number;
 }
