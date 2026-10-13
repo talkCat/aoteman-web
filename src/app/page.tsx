@@ -19,6 +19,8 @@ import { TurnAnchorRail } from '@/components/TurnAnchorRail';
 import { Markdown } from '@/components/Markdown';
 import { UserMenu } from '@/components/UserMenu';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useSessions } from '@/hooks/useSessions';
+import { getLastSessionId, setLastSessionId } from '@/lib/session';
 import { ChevronDown, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Check, Menu } from 'lucide-react';
 
 // 生成随机 ID
@@ -255,6 +257,9 @@ export default function AgentChatPage() {
   // 身份状态：userId 来自真实登录用户，sessionId 是本地会话标识
   const [identity, setIdentity] = useState<Identity>({ userId: '', sessionId: '' });
 
+  // 历史会话列表（侧边栏）：走 BFF /api/sessions → 数据面
+  const { sessions, loading: sessionsLoading, refresh: refreshSessions } = useSessions(identity.userId);
+
   // 对话消息
   const [messages, setMessages] = useState<Message[]>([]);
 
@@ -353,21 +358,51 @@ export default function AgentChatPage() {
     thinkingMapRef.current.clear();
   }, []);
 
-  // 身份初始化：登录后固定用真实 userId；未登录（如 zoer iframe 内嵌）回退 anonymous，保证仍能连上
+  // 身份初始化：登录后固定用真实 userId；未登录（如 zoer iframe 内嵌）回退 anonymous，保证仍能连上。
+  // sessionId 选择顺序：URL ?session= → localStorage「最近会话」→ 新生成（见设计 §6.1）。
   useEffect(() => {
     if (!authReady || identity.sessionId) return;
+    const userId = currentUser?.userId || 'anonymous';
+    const urlSession =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('session')
+        : null;
     setIdentity({
-      userId: currentUser?.userId || 'anonymous',
-      sessionId: generateId(),
+      userId,
+      sessionId: urlSession || getLastSessionId(userId) || generateId(),
     });
   }, [authReady, currentUser, identity.sessionId]);
+
+  // 会话切换 / 新建后同步写 localStorage 与 URL，保证刷新 / 分享都能续上历史（设计 §6.1）
+  useEffect(() => {
+    if (!identity.userId || !identity.sessionId) return;
+    setLastSessionId(identity.userId, identity.sessionId);
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('session') !== identity.sessionId) {
+      url.searchParams.set('session', identity.sessionId);
+      window.history.replaceState(null, '', url.toString());
+    }
+  }, [identity.userId, identity.sessionId]);
 
   // 新会话：userId 保持登录身份不变，仅换 sessionId 并清空当前对话
   const resetIdentity = useCallback(() => {
     clearConversation();
     setIdentity({ userId: identity.userId || 'anonymous', sessionId: generateId() });
+    setShowToc(false);
     addNotification('info', '已开始新会话');
   }, [clearConversation, addNotification, identity.userId]);
+
+  // 切换历史会话：先清空本地 turns，再改 sessionId；useSSEStream 会重连并按 after=0 重放历史事件
+  const switchSession = useCallback(
+    (sessionId: string) => {
+      setShowToc(false);
+      if (!sessionId || sessionId === identity.sessionId) return;
+      clearConversation();
+      setIdentity(prev => ({ ...prev, sessionId }));
+    },
+    [clearConversation, identity.sessionId]
+  );
 
   // 提交事件
   const submitEvent = useCallback(async (events: Array<{ type: string; payload: Record<string, unknown> }>): Promise<boolean> => {
@@ -384,6 +419,8 @@ export default function AgentChatPage() {
       if (!response.ok) {
         throw new Error(`提交失败: ${response.status}`);
       }
+      // 事件落库后刷新会话列表：新会话首次发消息才出现，标题 / 最近活跃也会更新
+      refreshSessions();
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : '提交失败';
@@ -391,7 +428,7 @@ export default function AgentChatPage() {
       addNotification('error', message);
       return false;
     }
-  }, [identity, addNotification]);
+  }, [identity, addNotification, refreshSessions]);
 
   // 发送消息
   const sendMessage = useCallback(async () => {
@@ -1089,7 +1126,14 @@ export default function AgentChatPage() {
         </div>
       </header>
       <div className="flex flex-1 overflow-hidden" id="chat-main">
-        <SessionSidebar className="hidden lg:flex" />
+        <SessionSidebar
+          className="hidden lg:flex"
+          sessions={sessions}
+          currentSessionId={identity.sessionId}
+          loading={sessionsLoading}
+          onSelect={switchSession}
+          onNew={resetIdentity}
+        />
         <TurnAnchorRail
           turns={turns}
           activeTurnId={activeTurnId}
@@ -1235,7 +1279,14 @@ export default function AgentChatPage() {
       <Sheet open={showToc} onOpenChange={setShowToc}>
         <SheetContent side="left" className="w-60 p-0">
           <SheetTitle className="sr-only">项目与历史对话</SheetTitle>
-          <SessionSidebar className="h-full w-full border-r-0" />
+          <SessionSidebar
+            className="h-full w-full border-r-0"
+            sessions={sessions}
+            currentSessionId={identity.sessionId}
+            loading={sessionsLoading}
+            onSelect={switchSession}
+            onNew={resetIdentity}
+          />
         </SheetContent>
       </Sheet>
 
