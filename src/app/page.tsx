@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useTheme } from 'next-themes';
 import { useSSEStream } from '@/hooks/useSSEStream';
 import { normalizeFollowupInput } from '@/lib/followup';
-import type { Identity, Message, Thinking, Narration, ToolUse, ToolConfirmation, FollowupQuestionnaire, FollowupAnswer, TraceEntry, Notification, TurnGroup } from '@/types/agent';
+import type { Identity, Message, Thinking, Narration, ToolUse, ToolConfirmation, FollowupQuestionnaire, FollowupAnswer, Notification, TurnGroup } from '@/types/agent';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
@@ -12,7 +12,6 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { SessionSidebar } from '@/components/SessionSidebar';
@@ -20,7 +19,7 @@ import { TurnAnchorRail } from '@/components/TurnAnchorRail';
 import { Markdown } from '@/components/Markdown';
 import { UserMenu } from '@/components/UserMenu';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { ChevronDown, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Eye, EyeOff, Check, Menu } from 'lucide-react';
+import { ChevronDown, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Check, Menu } from 'lucide-react';
 
 // 生成随机 ID
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -280,11 +279,6 @@ export default function AgentChatPage() {
   // 追问问卷
   const [followupQuestionnaire, setFollowupQuestionnaire] = useState<FollowupQuestionnaire | null>(null);
 
-  // TRACE 面板
-  const [traceEntries, setTraceEntries] = useState<TraceEntry[]>([]);
-  const [showTrace, setShowTrace] = useState(false);
-  const traceScrollRef = useRef<HTMLDivElement>(null);
-
   // 移动端会话导航抽屉 + 轮次锚点高亮
   const [showToc, setShowToc] = useState(false);
   const [activeTurnId, setActiveTurnId] = useState<number | null>(null);
@@ -354,7 +348,6 @@ export default function AgentChatPage() {
     setToolUses([]);
     setToolConfirmations([]);
     setFollowupQuestionnaire(null);
-    setTraceEntries([]);
     setError(null);
     messageMapRef.current.clear();
     thinkingMapRef.current.clear();
@@ -737,17 +730,6 @@ export default function AgentChatPage() {
     addNotification('warning', '已中断');
   }, [addNotification]);
 
-  const handleTrace = useCallback((entry: TraceEntry) => {
-    setTraceEntries(prev => [...prev.slice(-99), entry]);
-    if (showTrace && traceScrollRef.current) {
-      setTimeout(() => {
-        traceScrollRef.current?.scrollTo({
-          top: traceScrollRef.current.scrollHeight,
-          behavior: 'smooth',
-        });
-      }, 0);
-    }
-  }, [showTrace]);
   // 处理追问工具：同一张问卷只渲染一次，提交后不再重建。
   // 关键：必须从未处理的工具里挑选，否则第二轮问卷会被第一轮已处理的工具挡住。
   useEffect(() => {
@@ -896,7 +878,6 @@ export default function AgentChatPage() {
       onStatusIdle: handleStatusIdle,
       onError: handleError,
       onInterrupted: handleInterrupted,
-      onTrace: handleTrace,
     }
   );
 
@@ -1096,10 +1077,6 @@ export default function AgentChatPage() {
             </HoverCardContent>
           </HoverCard>
 
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setShowTrace(!showTrace)} title="TRACE 调试">
-            <Eye className="h-4 w-4" />
-          </Button>
-
           <Button variant="ghost" size="icon" className="h-9 w-9" onClick={resetIdentity} title="新会话" aria-label="新会话">
             <RotateCcw className="h-4 w-4" />
           </Button>
@@ -1253,36 +1230,6 @@ export default function AgentChatPage() {
           </div>
         </div>
 
-        {showTrace && (
-          <div className="flex w-80 flex-col border-l border-border bg-card">
-            <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-              <span className="text-sm font-medium">TRACE 调试</span>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowTrace(false)}>
-                <EyeOff className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-            <ScrollArea className="min-h-0 flex-1 p-2" ref={traceScrollRef}>
-              {traceEntries.map(entry => (
-                <div key={entry.id} className="border-b border-border/60 p-2 text-xs">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-[11px]">{entry.type}</Badge>
-                    <span className="text-muted-foreground">{entry.summary}</span>
-                  </div>
-                  {Boolean(entry.payload) && (
-                    <Collapsible className="mt-1">
-                      <CollapsibleTrigger className="text-xs text-skill hover:text-skill/80">详情</CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <pre className="mt-1 max-h-32 overflow-x-auto rounded-md bg-secondary p-1.5 font-mono text-xs">
-                          {JSON.stringify(entry.payload, null, 2)}
-                        </pre>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  )}
-                </div>
-              ))}
-            </ScrollArea>
-          </div>
-        )}
       </div>
 
       <Sheet open={showToc} onOpenChange={setShowToc}>
