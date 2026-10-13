@@ -18,6 +18,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { SessionSidebar } from '@/components/SessionSidebar';
 import { TurnAnchorRail } from '@/components/TurnAnchorRail';
 import { Markdown } from '@/components/Markdown';
+import { UserMenu } from '@/components/UserMenu';
 import { ChevronDown, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Copy, Eye, EyeOff, Pencil, Check, Menu } from 'lucide-react';
 
 // 生成随机 ID
@@ -1154,6 +1155,8 @@ export default function AgentChatPage() {
           <Button variant="ghost" size="icon" className="h-9 w-9" onClick={resetIdentity} title="重置身份">
             <RotateCcw className="h-4 w-4" />
           </Button>
+
+          <UserMenu />
 
           <Button variant="ghost" size="icon" className="h-9 w-9" onClick={toggleTheme} title={isDark ? '浅色模式' : '深色模式'}>
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
