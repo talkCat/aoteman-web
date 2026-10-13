@@ -19,7 +19,8 @@ import { SessionSidebar } from '@/components/SessionSidebar';
 import { TurnAnchorRail } from '@/components/TurnAnchorRail';
 import { Markdown } from '@/components/Markdown';
 import { UserMenu } from '@/components/UserMenu';
-import { ChevronDown, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Copy, Eye, EyeOff, Pencil, Check, Menu } from 'lucide-react';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { ChevronDown, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Eye, EyeOff, Check, Menu } from 'lucide-react';
 
 // 生成随机 ID
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -249,20 +250,11 @@ export default function AgentChatPage() {
     setTheme(isDark ? 'light' : 'dark');
   }, [isDark, setTheme]);
 
-  // 身份状态
+  // 真实登录用户（BFF /api/auth/me）；未登录 / 控制面不可达时为 null
+  const { user: currentUser, ready: authReady } = useCurrentUser();
+
+  // 身份状态：userId 来自真实登录用户，sessionId 是本地会话标识
   const [identity, setIdentity] = useState<Identity>({ userId: '', sessionId: '' });
-
-  // 身份字段编辑状态
-  const [editingIdentityField, setEditingIdentityField] = useState<'userId' | 'sessionId' | null>(null);
-  const [identityDraft, setIdentityDraft] = useState('');
-
-  // Generate random identity only on client to avoid SSR hydration mismatch
-  useEffect(() => {
-    setIdentity({
-      userId: generateId(),
-      sessionId: generateId(),
-    });
-  }, []);
 
   // 对话消息
   const [messages, setMessages] = useState<Message[]>([]);
@@ -368,46 +360,21 @@ export default function AgentChatPage() {
     thinkingMapRef.current.clear();
   }, []);
 
-  // 重置身份
-  const resetIdentity = useCallback(() => {
-    clearConversation();
+  // 身份初始化：登录后固定用真实 userId；未登录（如 zoer iframe 内嵌）回退 anonymous，保证仍能连上
+  useEffect(() => {
+    if (!authReady || identity.sessionId) return;
     setIdentity({
-      userId: generateId(),
+      userId: currentUser?.userId || 'anonymous',
       sessionId: generateId(),
     });
-    addNotification('info', '已重置身份，开始新的会话');
-  }, [clearConversation, addNotification]);
+  }, [authReady, currentUser, identity.sessionId]);
 
-  // 开始编辑身份字段
-  const startEditIdentity = useCallback((field: 'userId' | 'sessionId') => {
-    setEditingIdentityField(field);
-    setIdentityDraft(identity[field]);
-  }, [identity]);
-
-  // 提交身份编辑（非空才生效；变更后以新身份重开会话）
-  const commitEditIdentity = useCallback(() => {
-    if (editingIdentityField === null) return;
-    const field = editingIdentityField;
-    const value = identityDraft.trim();
-    setEditingIdentityField(null);
-    setIdentityDraft('');
-    if (!value || value === identity[field]) return;
-
+  // 新会话：userId 保持登录身份不变，仅换 sessionId 并清空当前对话
+  const resetIdentity = useCallback(() => {
     clearConversation();
-    setIdentity(prev => ({ ...prev, [field]: value }));
-    addNotification('info', '已更新' + (field === 'userId' ? '用户ID' : '会话ID'));
-  }, [editingIdentityField, identityDraft, identity, clearConversation, addNotification]);
-
-  // 身份编辑框键盘事件
-  const handleIdentityKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      commitEditIdentity();
-    } else if (e.key === 'Escape') {
-      setEditingIdentityField(null);
-      setIdentityDraft('');
-    }
-  };
+    setIdentity({ userId: identity.userId || 'anonymous', sessionId: generateId() });
+    addNotification('info', '已开始新会话');
+  }, [clearConversation, addNotification, identity.userId]);
 
   // 提交事件
   const submitEvent = useCallback(async (events: Array<{ type: string; payload: Record<string, unknown> }>): Promise<boolean> => {
@@ -1055,46 +1022,21 @@ export default function AgentChatPage() {
     </Card>
   );
 
-  // 身份信息（收进 hover 展开的小徽标，不占主视线）
-  const renderIdentityField = (field: 'userId' | 'sessionId', label: string) => {
-    const editing = editingIdentityField === field;
-    return (
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">{label}</span>
-          {!editing && (
-            <div className="flex items-center gap-0.5">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEditIdentity(field)} title={`编辑${label}`}>
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copyText(identity[field])} title={`复制${label}`}>
-                <Copy className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          )}
-        </div>
-        {editing ? (
-          <div className="flex items-center gap-1.5">
-            <input
-              autoFocus
-              value={identityDraft}
-              onChange={e => setIdentityDraft(e.target.value)}
-              onBlur={commitEditIdentity}
-              onKeyDown={handleIdentityKeyDown}
-              className="min-w-0 flex-1 rounded-md border border-primary/40 bg-background px-2 py-1.5 font-mono text-xs outline-none"
-            />
-            <Button variant="ghost" size="icon" className="h-7 w-7" onMouseDown={e => e.preventDefault()} onClick={commitEditIdentity} title="确认">
-              <Check className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        ) : (
-          <code className="block w-full truncate rounded-md bg-muted px-2 py-1.5 font-mono text-xs text-muted-foreground">
-            {identity[field]}
-          </code>
-        )}
-      </div>
-    );
-  };
+  // 身份信息（只读）：展示真实登录用户；不再允许手工改 userId / sessionId
+  const identityLabel = currentUser
+    ? (currentUser.displayName?.trim() || currentUser.username)
+    : '匿名 / 未登录';
+  const identityRoleLabel = currentUser
+    ? (currentUser.roles.includes('ADMIN') ? '管理员' : '普通用户')
+    : '未登录';
+  const renderIdentityField = (field: 'userId' | 'sessionId', label: string) => (
+    <div className="space-y-1.5">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <code className="block w-full truncate rounded-md bg-muted px-2 py-1.5 font-mono text-xs text-muted-foreground" title={identity[field]}>
+        {identity[field] || '—'}
+      </code>
+    </div>
+  );
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
       <a
@@ -1130,20 +1072,26 @@ export default function AgentChatPage() {
 
           <HoverCard>
             <HoverCardTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9" title="身份信息" aria-label="身份信息">
+              <Button variant="ghost" size="icon" className="h-9 w-9" title="身份信息（只读）" aria-label="身份信息（只读）">
                 <User className="h-4 w-4" />
               </Button>
             </HoverCardTrigger>
             <HoverCardContent align="end" className="w-72">
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">身份信息</span>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={resetIdentity} title="重置身份">
-                    <RotateCcw className="h-3.5 w-3.5" />
-                  </Button>
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold uppercase text-primary">
+                    {identityLabel.slice(0, 1)}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{identityLabel}</div>
+                    <div className="text-xs text-muted-foreground">{identityRoleLabel}</div>
+                  </div>
                 </div>
-                {renderIdentityField('userId', '用户ID')}
-                {renderIdentityField('sessionId', '会话ID')}
+                {renderIdentityField('userId', '用户ID（登录身份）')}
+                {renderIdentityField('sessionId', '会话ID（本次会话）')}
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  用户身份来自当前登录账号，会话ID 随「新会话」切换。
+                </p>
               </div>
             </HoverCardContent>
           </HoverCard>
@@ -1152,7 +1100,7 @@ export default function AgentChatPage() {
             <Eye className="h-4 w-4" />
           </Button>
 
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={resetIdentity} title="重置身份">
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={resetIdentity} title="新会话" aria-label="新会话">
             <RotateCcw className="h-4 w-4" />
           </Button>
 

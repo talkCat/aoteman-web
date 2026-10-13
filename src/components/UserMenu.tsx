@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut, ShieldCheck, User as UserIcon } from "lucide-react";
 
@@ -13,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { AuthUser } from "@/lib/auth";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 /**
  * 顶栏用户菜单：显示当前登录用户并提供登出。
@@ -21,26 +20,7 @@ import type { AuthUser } from "@/lib/auth";
  */
 export function UserMenu() {
   const router = useRouter();
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/auth/me", { cache: "no-store" })
-      .then(async (res) => {
-        if (!alive) return;
-        setUser(res.ok ? ((await res.json()) as AuthUser) : null);
-      })
-      .catch(() => {
-        if (alive) setUser(null);
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const { user, ready } = useCurrentUser();
 
   async function handleLogout() {
     try {
@@ -51,7 +31,7 @@ export function UserMenu() {
     }
   }
 
-  if (loading || !user) return null;
+  if (!ready || !user) return null;
 
   const label = user.displayName?.trim() || user.username;
   const isAdmin = Array.isArray(user.roles) && user.roles.includes("ADMIN");
