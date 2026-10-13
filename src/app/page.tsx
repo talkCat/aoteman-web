@@ -258,7 +258,13 @@ export default function AgentChatPage() {
   const [identity, setIdentity] = useState<Identity>({ userId: '', sessionId: '' });
 
   // 历史会话列表（侧边栏）：走 BFF /api/sessions → 数据面
-  const { sessions, loading: sessionsLoading, refresh: refreshSessions } = useSessions(identity.userId);
+  const {
+    sessions,
+    loading: sessionsLoading,
+    refresh: refreshSessions,
+    remove: removeSession,
+    rename: renameSession,
+  } = useSessions(identity.userId);
 
   // 对话消息
   const [messages, setMessages] = useState<Message[]>([]);
@@ -402,6 +408,30 @@ export default function AgentChatPage() {
       setIdentity(prev => ({ ...prev, sessionId }));
     },
     [clearConversation, identity.sessionId]
+  );
+
+  // 删除历史会话：成功后按需新建；删除的是当前会话必须离开死会话（resetIdentity 会清空 turns 并换 sessionId）
+  const handleDeleteSession = useCallback(
+    async (sessionId: string) => {
+      const ok = await removeSession(sessionId);
+      if (!ok) return;
+      if (sessionId === identity.sessionId) {
+        resetIdentity();
+      } else {
+        addNotification('info', '会话已删除');
+      }
+    },
+    [removeSession, identity.sessionId, resetIdentity, addNotification]
+  );
+
+  // 重命名历史会话标题（服务端强制覆盖、不重排）；成功提示由这里统一发出
+  const handleRenameSession = useCallback(
+    async (sessionId: string, title: string) => {
+      const ok = await renameSession(sessionId, title);
+      if (ok) addNotification('info', '标题已更新');
+      return ok;
+    },
+    [renameSession, addNotification]
   );
 
   // 提交事件
@@ -1133,6 +1163,8 @@ export default function AgentChatPage() {
           loading={sessionsLoading}
           onSelect={switchSession}
           onNew={resetIdentity}
+          onDelete={handleDeleteSession}
+          onRename={handleRenameSession}
         />
         <TurnAnchorRail
           turns={turns}
@@ -1286,6 +1318,8 @@ export default function AgentChatPage() {
             loading={sessionsLoading}
             onSelect={switchSession}
             onNew={resetIdentity}
+            onDelete={handleDeleteSession}
+            onRename={handleRenameSession}
           />
         </SheetContent>
       </Sheet>
