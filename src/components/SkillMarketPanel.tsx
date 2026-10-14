@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ChangeEvent } from 'react';
 import {
   Check,
   Download,
@@ -9,6 +10,7 @@ import {
   RefreshCw,
   Store,
   Trash2,
+  Upload,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -28,12 +30,15 @@ import {
   fetchSkills,
   installSkill,
   uninstallSkill,
+  uploadSkill,
+  downloadSkillPackage,
+  deleteSkill,
   type SkillItem,
 } from '@/lib/skills';
 
 type Filter = 'all' | 'installed';
 
-/** 技能来源 → 面向用户的中文文案。 */
+/** 技能来源 -> 面向用户的中文文案。 */
 function sourceLabel(source: string): string {
   const normalized = (source || '').toLowerCase();
   if (normalized === 'mysql' || normalized === 'marketplace') return '广场';
@@ -42,27 +47,34 @@ function sourceLabel(source: string): string {
 }
 
 /**
- * 技能广场面板：查看技能目录、浏览已安装状态、一键安装 / 卸载。
+ * 技能广场面板：查看技能目录、浏览已安装状态、一键安装/卸载。
+ * P2 新增管理员能力：上传/覆盖（zip）、下载打包、下架技能。
  *
  * - 数据统一走 BFF /api/skills，页面不直连数据面；
  * - userId 由聊天页传入（真实登录用户，未登录回退 anonymous）；
- * - 安装 / 卸载成功后整体刷新列表，以服务端结果为唯一状态源。
- * 设计依据：doc/design/2026-10-14-技能广场前端.md。
+ * - isAdmin 来自控制面登录用户的 roles，仅 ADMIN 可见管理操作；
+ * - 安装/卸载成功或管理员操作后整体刷新列表，以服务端结果作为唯一状态源。
+ * 设计依据：doc/design/2026-10-14-技能广场前端设计.md。
  */
 export function SkillMarketPanel({
   open,
   onOpenChange,
   userId,
+  isAdmin,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   userId: string;
+  isAdmin: boolean;
 }) {
   const [skills, setSkills] = useState<SkillItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyName, setBusyName] = useState<string | null>(null);
+  const [adminBusyName, setAdminBusyName] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,6 +112,57 @@ export function SkillMarketPanel({
     }
   };
 
+  const handleUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const name = await uploadSkill(file);
+      toast.success('技能已上传/覆盖', { description: name });
+      await load();
+    } catch (err) {
+      toast.error('上传失败', {
+        description: err instanceof Error ? err.message : '请稍后重试',
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const downloadPackage = async (skill: SkillItem) => {
+    setAdminBusyName(skill.name);
+    try {
+      await downloadSkillPackage(skill.name);
+      toast.success('已下载技能包', { description: `${skill.name}.zip` });
+    } catch (err) {
+      toast.error('下载失败', {
+        description: err instanceof Error ? err.message : '请稍后重试',
+      });
+    } finally {
+      setAdminBusyName(null);
+    }
+  };
+
+  const removeSkill = async (skill: SkillItem) => {
+    if (!window.confirm(`确定下架技能「${skill.name}」？所有用户的安装关系也将被清理。`)) {
+      return;
+    }
+    setAdminBusyName(skill.name);
+    try {
+      await deleteSkill(skill.name);
+      toast.success('已下架技能', { description: skill.name });
+      await load();
+    } catch (err) {
+      toast.error('下架失败', {
+        description: err instanceof Error ? err.message : '请稍后重试',
+      });
+    } finally {
+      setAdminBusyName(null);
+    }
+  };
+
   const installedCount = skills.filter(s => s.installed).length;
   const visible = filter === 'installed' ? skills.filter(s => s.installed) : skills;
 
@@ -117,17 +180,45 @@ export function SkillMarketPanel({
                 安装后，智能体即可在对话中按技能名加载使用。
               </DialogDescription>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0"
-              onClick={() => void load()}
-              disabled={loading}
-              title="刷新"
-              aria-label="刷新技能列表"
-            >
-              <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
-            </Button>
+            <div className="flex shrink-0 items-center gap-2">
+              {isAdmin && (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".zip,.ZIP"
+                    className="hidden"
+                    onChange={handleUpload}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={uploading}
+                    onClick={() => fileInputRef.current?.click()}
+                    title="上传/覆盖技能（zip）"
+                    aria-label="上传技能"
+                  >
+                    {uploading ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="h-3.5 w-3.5" />
+                    )}
+                    <span className="ml-1.5">上传</span>
+                  </Button>
+                </>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => void load()}
+                disabled={loading}
+                title="刷新"
+                aria-label="刷新技能列表"
+              >
+                <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+              </Button>
+            </div>
           </div>
         </DialogHeader>
 
@@ -199,6 +290,7 @@ export function SkillMarketPanel({
             <div className="space-y-3 pb-1">
               {visible.map(skill => {
                 const busy = busyName === skill.name;
+                const adminBusy = adminBusyName === skill.name;
                 return (
                   <div
                     key={skill.name}
@@ -225,22 +317,54 @@ export function SkillMarketPanel({
                           </Badge>
                         </p>
                       </div>
-                      <Button
-                        size="sm"
-                        variant={skill.installed ? 'outline' : 'default'}
-                        className="shrink-0"
-                        disabled={busy}
-                        onClick={() => void toggle(skill)}
-                      >
-                        {busy ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : skill.installed ? (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        ) : (
-                          <Download className="h-3.5 w-3.5" />
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {isAdmin && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              disabled={adminBusy}
+                              onClick={() => void downloadPackage(skill)}
+                              title="下载打包"
+                              aria-label={`下载 ${skill.name}`}
+                            >
+                              {adminBusy ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Download className="h-4 w-4" />
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              disabled={adminBusy}
+                              onClick={() => void removeSkill(skill)}
+                              title="下架技能"
+                              aria-label={`下架 ${skill.name}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
                         )}
-                        <span className="ml-1.5">{skill.installed ? '卸载' : '安装'}</span>
-                      </Button>
+                        <Button
+                          size="sm"
+                          variant={skill.installed ? 'outline' : 'default'}
+                          className="shrink-0"
+                          disabled={busy || adminBusy}
+                          onClick={() => void toggle(skill)}
+                        >
+                          {busy ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : skill.installed ? (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          ) : (
+                            <Download className="h-3.5 w-3.5" />
+                          )}
+                          <span className="ml-1.5">{skill.installed ? '卸载' : '安装'}</span>
+                        </Button>
+                      </div>
                     </div>
                     {skill.description && (
                       <p className="mt-2.5 text-xs leading-relaxed text-muted-foreground">

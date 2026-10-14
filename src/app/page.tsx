@@ -1342,6 +1342,7 @@ export default function AgentChatPage() {
         open={skillPanelOpen}
         onOpenChange={setSkillPanelOpen}
         userId={identity.userId || 'anonymous'}
+        isAdmin={currentUser?.roles.includes('ADMIN') ?? false}
       />
 
       {notifications.length > 0 && (
