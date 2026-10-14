@@ -310,12 +310,12 @@ export function SkillMarketPanel({
                             </Badge>
                           )}
                         </div>
-                        <p className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                           <span>来源</span>
                           <Badge variant="outline" className="text-[10px]">
                             {sourceLabel(skill.source)}
                           </Badge>
-                        </p>
+                        </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
                         {isAdmin && (
