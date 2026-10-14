@@ -18,10 +18,11 @@ import { SessionSidebar } from '@/components/SessionSidebar';
 import { TurnAnchorRail } from '@/components/TurnAnchorRail';
 import { Markdown } from '@/components/Markdown';
 import { UserMenu } from '@/components/UserMenu';
+import { SkillMarketPanel } from '@/components/SkillMarketPanel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useSessions } from '@/hooks/useSessions';
 import { getLastSessionId, setLastSessionId } from '@/lib/session';
-import { ChevronDown, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Check, Menu } from 'lucide-react';
+import { ChevronDown, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Check, Menu, Store } from 'lucide-react';
 
 // 生成随机 ID
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -305,6 +306,9 @@ export default function AgentChatPage() {
   // 输入
   const [inputValue, setInputValue] = useState('');
   const [deepThinking, setDeepThinking] = useState(false);
+
+  // 技能广场面板开关
+  const [skillPanelOpen, setSkillPanelOpen] = useState(false);
 
   // 消息映射用于流式更新
   const messageMapRef = useRef<Map<string, Message>>(new Map());
@@ -1148,6 +1152,16 @@ export default function AgentChatPage() {
             <RotateCcw className="h-4 w-4" />
           </Button>
 
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 gap-1.5 px-2.5"
+            onClick={() => setSkillPanelOpen(true)}
+          >
+            <Store className="h-4 w-4" />
+            <span className="hidden lg:inline">技能广场</span>
+          </Button>
+
           <UserMenu />
 
           <Button variant="ghost" size="icon" className="h-9 w-9" onClick={toggleTheme} title={isDark ? '浅色模式' : '深色模式'}>
@@ -1323,6 +1337,12 @@ export default function AgentChatPage() {
           />
         </SheetContent>
       </Sheet>
+
+      <SkillMarketPanel
+        open={skillPanelOpen}
+        onOpenChange={setSkillPanelOpen}
+        userId={identity.userId || 'anonymous'}
+      />
 
       {notifications.length > 0 && (
         <div className="fixed bottom-20 right-4 z-50 flex flex-col gap-2">
