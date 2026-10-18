@@ -146,8 +146,9 @@ function ToolStep({ tool }: { tool: ToolUse }) {
 }
 
 // 一轮内的「过程」时间线。
-// 叙述（narration）是用户纠偏的关键信号，始终可见，不随过程折叠；
-// 思考 / 工具等机制细节收进可折叠的「过程」块，轮次进行中自动展开。
+// 叙述（narration）、思考（thinking）与工具调用（tool）收敛为同一条按 seq 交错的时间线，
+// 统一收进一个可折叠的「过程」块：轮次进行中自动展开、结束后自动收起；
+// 用户手动开合后不再被自动覆盖（manualOverride）。「你的选择」（追问作答）按真实顺序排在时间线之后。
 function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boolean }) {
   const [open, setOpen] = useState(false);
   const [manualOverride, setManualOverride] = useState(false);
@@ -158,38 +159,13 @@ function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boo
 
   if (steps.length === 0) return null;
 
-  const narrations = steps.filter((s): s is Extract<TurnStep, { kind: 'narration' }> => s.kind === 'narration');
+  const timeline = steps.filter(s => s.kind !== 'answer');
   const answers = steps.filter((s): s is Extract<TurnStep, { kind: 'answer' }> => s.kind === 'answer');
-  const mechanics = steps.filter(s => s.kind !== 'narration' && s.kind !== 'answer');
-  const toolCount = mechanics.filter(s => s.kind === 'tool').length;
+  const toolCount = timeline.filter(s => s.kind === 'tool').length;
 
   return (
     <div className="mb-4 space-y-2.5">
-      {narrations.map(step => (
-        <div key={step.key} className="ml-0.5 border-l-2 border-border pl-3">
-          <div className="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
-            <MessageSquareText className="h-3 w-3" />
-            <span>过程</span>
-          </div>
-          <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
-            {step.narration.content}
-          </p>
-        </div>
-      ))}
-
-      {answers.map(step => (
-        <div key={step.key} className="ml-0.5 border-l-2 border-primary/40 pl-3">
-          <div className="mb-1 flex items-center gap-1.5 text-[11px] text-primary/80">
-            <User className="h-3 w-3" />
-            <span>你的选择</span>
-          </div>
-          <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
-            {step.answer.content}
-          </p>
-        </div>
-      ))}
-
-      {mechanics.length > 0 && (
+      {timeline.length > 0 && (
         <Collapsible
           open={open}
           onOpenChange={(next) => {
@@ -205,13 +181,26 @@ function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boo
             )}
             <Sparkles className="h-3 w-3" />
             <span>
-              过程 · {mechanics.length} 步{toolCount > 0 ? `（含 ${toolCount} 次工具）` : ''}
+              过程 · {timeline.length} 步{toolCount > 0 ? `（含 ${toolCount} 次工具）` : ''}
             </span>
             <ChevronDown className={'h-3 w-3 transition-transform ' + (open ? 'rotate-180' : '')} />
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="mt-2.5 space-y-3">
-              {mechanics.map(step => {
+              {timeline.map(step => {
+                if (step.kind === 'narration') {
+                  return (
+                    <div key={step.key} className="ml-0.5 border-l-2 border-border pl-3">
+                      <div className="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
+                        <MessageSquareText className="h-3 w-3" />
+                        <span>过程</span>
+                      </div>
+                      <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                        {step.narration.content}
+                      </p>
+                    </div>
+                  );
+                }
                 if (step.kind === 'thinking') {
                   return (
                     <div key={step.key} className="ml-0.5 border-l-2 border-thinking/40 pl-3">
@@ -237,6 +226,18 @@ function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boo
           </CollapsibleContent>
         </Collapsible>
       )}
+
+      {answers.map(step => (
+        <div key={step.key} className="ml-0.5 border-l-2 border-primary/40 pl-3">
+          <div className="mb-1 flex items-center gap-1.5 text-[11px] text-primary/80">
+            <User className="h-3 w-3" />
+            <span>你的选择</span>
+          </div>
+          <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+            {step.answer.content}
+          </p>
+        </div>
+      ))}
     </div>
   );
 }
