@@ -43,6 +43,31 @@
 
 > 例外：纯笔误 / 文案 / 样式这类**一眼可见、无行为影响**的改动可免正式分析，但仍要在提交信息里一句话说明。
 
+### 1.2 前端问题排查：借助 Chrome DevTools MCP（已安装）
+
+本机已安装 **Chrome DevTools MCP**（配置见 `C:\Users\18115\.codex\config.toml` 的 `[mcp_servers.chrome-devtools]`，经 `npx -y chrome-devtools-mcp@1.11.0` 启动）。
+
+**凡涉及前端现象的排查与验证，先取证、再下结论**，禁止「看代码猜原因」直接改：
+
+| 场景 | 该用的工具 |
+| --- | --- |
+| 复现交互问题（点击 / 填表 / 悬停 / 按键 / 弹窗） | `navigate_page`、`click`、`fill` / `fill_form`、`hover`、`press_key`、`handle_dialog` |
+| 看页面真实 DOM / 可访问性结构 | `take_snapshot`（优先）、`take_screenshot` |
+| 读取 React 内部状态、SSE 事件流原始数据 | `evaluate_script` |
+| Console 报错、hydration 警告 | `list_console_messages`、`get_console_message` |
+| SSE 请求、接口时序、请求 / 响应头与 Cookie | `list_network_requests`、`get_network_request` |
+| 卡顿 / 布局抖动（LCP、CLS、INP） | `performance_start_trace` / `stop_trace` / `analyze_insight` |
+| 可访问性 / SEO / 最佳实践 | `lighthouse_audit`（`mode: snapshot` 分析当前页，不重载） |
+| 内存泄漏 | `take_heapsnapshot` |
+
+使用前提与注意：
+
+- **先起本地 dev server**（`pnpm dev`，默认 `http://localhost:3000`），否则导航只会得到 `ERR_CONNECTION_REFUSED`。
+- 抓到的证据（Console 报错、Network 时序、`evaluate_script` 读数）要**写进 `doc/bug/<日期>-<标题>.md`**，作为 1.1「分析」步骤的依据；根因结论必须能被这些证据支撑。
+- 验证修复时同样用它**实测复现**，不能只看 `tsc --noEmit` / `next lint` 通过。
+- **落盘限制**：该 MCP 未配置 `--filesystemRoot`，默认只允许写系统临时目录（`%TEMP%`），因此 `take_screenshot` / `performance_stop_trace` / `take_heapsnapshot` 指定仓库路径会被拒绝。需要落盘到仓库时，在 `config.toml` 的 `args` 追加 `--filesystemRoot`（可多个）并重启会话。
+- 连接的是**独立的调试浏览器实例**（非用户日常 Chrome），不要在单个页面上反复残留探测痕迹；取证完成后把页面恢复原状，且**不提交**由它生成的临时产物（截图 / trace / heapsnapshot）。
+
 ---
 
 ## 二、Git 管理准则：统一使用 GitHub CLI（gh）
