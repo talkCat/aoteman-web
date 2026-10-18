@@ -207,9 +207,12 @@ export function useSSEStream(
         } else if (target === 'agent.tool_use' || target === 'agent.skill_use') {
           if (seenEventIdsRef.current.has('start:' + id)) break;
           seenEventIdsRef.current.add('start:' + id);
+          // 起始帧已带工具名：后端在 event_start 时即已确定工具名。
+          // 取到真名就立即显示，避免入参 JSON 流式期间一直停在「准备中…」占位。
+          const startName = String(payload.toolName || payload.name || '').trim();
           const toolUse: ToolUse = {
             id,
-            name: '准备中…',
+            name: startName || '准备中…',
             input: '',
             type: target === 'agent.skill_use' ? 'skill' : 'tool',
             status: 'pending',
