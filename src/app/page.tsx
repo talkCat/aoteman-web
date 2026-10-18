@@ -22,6 +22,8 @@ import { SkillMarketPanel } from '@/components/SkillMarketPanel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useSessions } from '@/hooks/useSessions';
 import { getLastSessionId, setLastSessionId } from '@/lib/session';
+import { TurnArtifacts } from '@/components/TurnArtifacts';
+import { fetchArtifacts, isMarkdownArtifactWrite, matchTurnArtifacts, type ArtifactItem } from '@/lib/artifacts';
 import { ChevronDown, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Check, Menu, Store } from 'lucide-react';
 
 // 生成随机 ID
@@ -310,6 +312,9 @@ export default function AgentChatPage() {
 
   // 技能广场面板开关
   const [skillPanelOpen, setSkillPanelOpen] = useState(false);
+
+  // 本轮产物列表（BFF /api/artifacts → 数据面）；用于推导每轮的 Markdown 产物（设计 §15.1）
+  const [artifacts, setArtifacts] = useState<ArtifactItem[]>([]);
 
   // 消息映射用于流式更新
   const messageMapRef = useRef<Map<string, Message>>(new Map());
@@ -892,6 +897,16 @@ export default function AgentChatPage() {
     return Array.from(groupMap.values()).sort((a, b) => a.timestamp - b.timestamp);
   }, [messages, thinking, narrations, toolUses, followupAnswers]);
 
+  // 每轮产物：由该轮 write_file / edit_file 的 input.path 与产物列表对齐推导（设计 §15.1）
+  const turnArtifacts = useMemo(() => {
+    const map = new Map<number, ArtifactItem[]>();
+    turns.forEach(turn => {
+      const items = matchTurnArtifacts(turn.toolUses, artifacts);
+      if (items.length > 0) map.set(turn.turnId, items);
+    });
+    return map;
+  }, [turns, artifacts]);
+
   // 轮次序号集合，作为 scroll spy 的重建依据
   const turnIdsKey = useMemo(() => turns.map(t => t.turnId).join(','), [turns]);
 
@@ -957,6 +972,24 @@ export default function AgentChatPage() {
   useEffect(() => {
     beginUserTurnRef.current = beginUserTurn;
   }, [beginUserTurn]);
+
+  // 产物刷新时机：会话切换，或本回合有新写入工具产出 / 结束时（设计 §15.1）
+  const mdWriteCount = toolUses.filter(isMarkdownArtifactWrite).length;
+
+  useEffect(() => {
+    if (!identity.userId) return;
+    let alive = true;
+    fetchArtifacts(identity.userId, identity.sessionId || undefined)
+      .then(list => {
+        if (alive) setArtifacts(list);
+      })
+      .catch(() => {
+        if (alive) setArtifacts([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [identity.userId, identity.sessionId, isRunning, sseRunning, mdWriteCount]);
 
   // 键盘事件
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -1253,6 +1286,12 @@ export default function AgentChatPage() {
                         />
                       </div>
                     ))}
+
+                  <TurnArtifacts
+                    artifacts={turnArtifacts.get(turn.turnId) ?? []}
+                    userId={identity.userId || 'anonymous'}
+                    sessionId={identity.sessionId || undefined}
+                  />
                 </div>
               ))}
 
