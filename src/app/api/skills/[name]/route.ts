@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { bearerHeaders } from '@/lib/bff-auth';
+import {
+  CurrentUserError,
+  currentUserErrorResponse,
+  requireAdmin,
+} from '@/lib/current-user';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
 
@@ -12,6 +17,7 @@ type RouteContext = { params: Promise<{ name: string }> };
  */
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
+    await requireAdmin(request);
     const { name } = await context.params;
     const url = `${BACKEND_URL}/api/skills/${encodeURIComponent(name)}`;
 
@@ -35,6 +41,9 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     }
     return new NextResponse(null, { status: 204 });
   } catch (error) {
+    if (error instanceof CurrentUserError) {
+      return currentUserErrorResponse(error);
+    }
     console.error('[Proxy skill delete Error]', error);
     return NextResponse.json({ error: 'Failed to delete skill' }, { status: 502 });
   }

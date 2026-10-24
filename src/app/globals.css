@@ -211,4 +211,9 @@
   .animate-message-in {
     animation: none;
   }
+
+  /* 低动效偏好下取消颜色 / 背景过渡，交互结果直接呈现。 */
+  .transition-colors {
+    transition-duration: 0s;
+  }
 }

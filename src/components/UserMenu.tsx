@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut, ShieldCheck, User as UserIcon } from "lucide-react";
+import { LayoutDashboard, LogOut, ShieldCheck, User as UserIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -15,7 +16,7 @@ import {
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 /**
- * 顶栏用户菜单：显示当前登录用户并提供登出。
+ * 顶栏用户菜单：显示当前登录用户、管理后台入口与登出。
  * 未登录 / 加载中一律不渲染，保证「内嵌 / 未登录」场景的顶栏与原样一致（软守卫，见设计 §3.6）。
  */
 export function UserMenu() {
@@ -62,6 +63,12 @@ export function UserMenu() {
           {isAdmin ? "管理员" : "普通用户"}
         </div>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/admin" className="cursor-pointer">
+            <LayoutDashboard className="h-4 w-4" />
+            管理后台
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
           <LogOut className="h-4 w-4" />
           退出登录

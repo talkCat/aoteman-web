@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { bearerHeaders } from '@/lib/bff-auth';
+import {
+  CurrentUserError,
+  currentUserErrorResponse,
+  requireAdmin,
+} from '@/lib/current-user';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
 
@@ -41,6 +46,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // ADMIN 专属：P1 数据面未开鉴权时，由 BFF 兜底校验角色。
+    await requireAdmin(request);
     const form = await request.formData();
     const res = await fetch(`${BACKEND_URL}/api/skills`, {
       method: 'POST',
@@ -67,6 +74,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(payload ?? {});
   } catch (error) {
+    if (error instanceof CurrentUserError) {
+      return currentUserErrorResponse(error);
+    }
     console.error('[Proxy skill upload Error]', error);
     return NextResponse.json({ error: 'Failed to upload skill' }, { status: 502 });
   }

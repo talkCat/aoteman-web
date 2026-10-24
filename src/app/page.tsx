@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import { useTheme } from 'next-themes';
 import { useSSEStream } from '@/hooks/useSSEStream';
 import { normalizeFollowupInput } from '@/lib/followup';
@@ -24,7 +25,7 @@ import { useSessions } from '@/hooks/useSessions';
 import { getLastSessionId, setLastSessionId } from '@/lib/session';
 import { TurnArtifacts } from '@/components/TurnArtifacts';
 import { fetchArtifacts, isMarkdownArtifactWrite, matchTurnArtifacts, type ArtifactItem } from '@/lib/artifacts';
-import { ChevronDown, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Check, Menu, Store } from 'lucide-react';
+import { ChevronDown, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Check, Menu, Store, LayoutDashboard } from 'lucide-react';
 
 // 生成随机 ID
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -1195,6 +1196,14 @@ export default function AgentChatPage() {
             <Store className="h-4 w-4" />
             <span className="hidden lg:inline">技能广场</span>
           </Button>
+
+          {currentUser && (
+            <Button variant="ghost" size="icon" className="h-9 w-9" asChild title="管理后台" aria-label="管理后台">
+              <Link href="/admin">
+                <LayoutDashboard className="h-4 w-4" />
+              </Link>
+            </Button>
+          )}
 
           <UserMenu />
 
