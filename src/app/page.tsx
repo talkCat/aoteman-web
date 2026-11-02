@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { useSSEStream } from '@/hooks/useSSEStream';
 import { normalizeFollowupInput } from '@/lib/followup';
@@ -258,6 +259,23 @@ export default function AgentChatPage() {
 
   // 真实登录用户（BFF /api/auth/me）；未登录 / 控制面不可达时为 null
   const { user: currentUser, ready: authReady } = useCurrentUser();
+  const router = useRouter();
+
+  // 是否为 iframe 内嵌（Zoer 预览）：内嵌场景允许匿名使用（设计 §3.6 软守卫）。
+  // frameChecked 保证 iframe 判断完成后再决定是否跳转，避免首帧误判。
+  const [frameChecked, setFrameChecked] = useState(false);
+  const [isEmbedded, setIsEmbedded] = useState(false);
+  useEffect(() => {
+    setIsEmbedded(window.self !== window.top);
+    setFrameChecked(true);
+  }, []);
+
+  // 登录态校验失败（未登录 / token 失效 / 身份服务不可达）：顶层页面回登录页。
+  // 与 admin/layout.tsx 的页面级守卫保持一致；内嵌场景不跳转，保持 anonymous 可用。
+  useEffect(() => {
+    if (!authReady || !frameChecked || currentUser || isEmbedded) return;
+    router.replace('/login');
+  }, [authReady, frameChecked, currentUser, isEmbedded, router]);
 
   // 身份状态：userId 来自真实登录用户，sessionId 是本地会话标识
   const [identity, setIdentity] = useState<Identity>({ userId: '', sessionId: '' });
@@ -379,6 +397,8 @@ export default function AgentChatPage() {
   // sessionId 选择顺序：URL ?session= → localStorage「最近会话」→ 新生成（见设计 §6.1）。
   useEffect(() => {
     if (!authReady || identity.sessionId) return;
+    // 顶层未登录：等待跳转登录页，不初始化匿名身份
+    if (!currentUser && !isEmbedded) return;
     const userId = currentUser?.userId || 'anonymous';
     const urlSession =
       typeof window !== 'undefined'
@@ -388,7 +408,7 @@ export default function AgentChatPage() {
       userId,
       sessionId: urlSession || getLastSessionId(userId) || generateId(),
     });
-  }, [authReady, currentUser, identity.sessionId]);
+  }, [authReady, currentUser, identity.sessionId, isEmbedded]);
 
   // 会话切换 / 新建后同步写 localStorage 与 URL，保证刷新 / 分享都能续上历史（设计 §6.1）
   useEffect(() => {
@@ -1124,6 +1144,18 @@ export default function AgentChatPage() {
       </code>
     </div>
   );
+  // 身份未确认前不渲染工作台：顶层未登录直接展示跳转占位，避免闪匿名界面 / 发无效请求
+  if (!authReady || !frameChecked || (!currentUser && !isEmbedded)) {
+    return (
+      <div className="flex h-dvh flex-col items-center justify-center gap-3 bg-background px-6 text-center text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden="true" />
+        <p className="text-sm" role="status">
+          {authReady ? '未登录，正在前往登录页…' : '正在验证登录状态…'}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
       <a
