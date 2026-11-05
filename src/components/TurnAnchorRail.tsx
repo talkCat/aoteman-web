@@ -59,11 +59,18 @@ export function TurnAnchorRail({ turns, activeTurnId, onSelect, className }: Tur
               onClick={() => onSelect(anchor.turnId)}
               aria-current={active ? 'location' : undefined}
               aria-label={`第 ${index + 1} 轮：${label}`}
-              className={cn(
-                'h-1 rounded-full transition-[width,background-color]',
-                active ? 'w-6 bg-primary' : 'w-3.5 bg-border hover:w-5 hover:bg-foreground/40',
-              )}
-            />
+              className="ui-focus-ring flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'block h-1 rounded-full transition-[width,background-color]',
+                  active
+                    ? 'w-6 bg-primary'
+                    : 'w-3.5 bg-border group-hover:w-5 group-hover:bg-foreground/40 group-focus-within:w-5',
+                )}
+              />
+            </button>
             <div className="pointer-events-none absolute left-full top-1/2 z-30 ml-3 w-56 -translate-y-1/2 rounded-lg border border-border bg-popover p-2.5 text-popover-foreground opacity-0 shadow-card transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
               <div className="mb-0.5 text-[11px] text-muted-foreground">
                 第 {index + 1} 轮{anchor.toolCount > 0 ? ` · ${anchor.toolCount} 次工具` : ''}

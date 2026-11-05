@@ -188,7 +188,7 @@ export function PermissionRuleList({
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-border/70 bg-card">
+      <div className="surface-raised overflow-hidden rounded-xl border border-border/70 bg-card">
         <form className="space-y-4 p-4 sm:p-5" onSubmit={handleSubmit}>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.9fr)_auto] lg:items-end">
             <div className="min-w-0 space-y-1.5">

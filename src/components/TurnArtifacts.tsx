@@ -74,7 +74,7 @@ export function TurnArtifacts({
             type="button"
             onClick={() => setOpenPath(item.workspacePath)}
             title={`预览 ${artifactFileName(item.workspacePath)}`}
-            className="flex max-w-full cursor-pointer items-center gap-2.5 rounded-xl border border-border/70 bg-card px-3 py-2 text-left shadow-soft transition-colors hover:border-primary/40 hover:bg-accent"
+            className="ui-interactive ui-focus-ring flex max-w-full cursor-pointer items-center gap-2.5 rounded-xl border border-border/70 bg-card px-3 py-2 text-left shadow-soft hover:border-primary/40 hover:bg-accent"
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <FileText className="h-4 w-4" />
@@ -119,7 +119,7 @@ export function TurnArtifacts({
                   href={artifactContentUrl(userId, sessionId, active.workspacePath, true)}
                   download
                   title="下载"
-                  className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  className="ui-interactive ui-focus-ring inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
                 >
                   <Download className="h-3.5 w-3.5" />
                   下载

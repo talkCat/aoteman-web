@@ -1,3 +1,5 @@
+import type { ExpertRef } from '@/types/knowledge';
+
 // 身份类型
 export interface Identity {
   userId: string;
@@ -10,6 +12,7 @@ export type SSEEventType =
   | 'event_delta'
   | 'agent.event'
   | 'agent.message'
+  | 'agent.citation'
   | 'agent.thinking'
   | 'agent.narration'
   | 'user.message'
@@ -55,6 +58,8 @@ export interface Message {
   timestamp: number;
   isStreaming?: boolean;
   turnId?: number;
+  /** 用户消息落盘的专家快照；旧数据可能只有 expertIds。 */
+  experts?: ExpertRef[];
 }
 
 // 思考过程类型

@@ -158,7 +158,7 @@ export default function SkillsPage() {
 
     if (items.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border/70 bg-card px-6 py-12 text-center">
+        <div className="surface-raised flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border/70 bg-card px-6 py-12 text-center">
           <PackageOpen className="h-9 w-9 text-muted-foreground/40" aria-hidden="true" />
           {kind === 'installed' ? (
             <>

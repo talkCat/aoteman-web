@@ -61,8 +61,10 @@
 
 :root {
   --radius: 0.625rem;
+  --ui-motion-duration: 120ms;
+  --ui-motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 
-  --background: oklch(0.982 0.002 220);
+  --background: oklch(0.972 0.002 220);
   --foreground: oklch(0.19 0.008 220);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.19 0.008 220);
@@ -104,24 +106,24 @@
 }
 
 .dark {
-  --background: oklch(0.16 0.007 220);
+  --background: oklch(0.145 0.007 220);
   --foreground: oklch(0.96 0.004 210);
-  --card: oklch(0.2 0.007 220);
+  --card: oklch(0.21 0.008 220);
   --card-foreground: oklch(0.96 0.004 210);
-  --popover: oklch(0.2 0.007 220);
+  --popover: oklch(0.235 0.008 220);
   --popover-foreground: oklch(0.96 0.004 210);
   --primary: oklch(0.75 0.11 191);
   --primary-foreground: oklch(0.16 0.02 200);
-  --secondary: oklch(0.24 0.009 220);
+  --secondary: oklch(0.255 0.009 220);
   --secondary-foreground: oklch(0.96 0.004 210);
-  --muted: oklch(0.24 0.009 220);
+  --muted: oklch(0.25 0.009 220);
   --muted-foreground: oklch(0.68 0.012 210);
-  --accent: oklch(0.27 0.01 215);
+  --accent: oklch(0.285 0.01 215);
   --accent-foreground: oklch(0.96 0.004 210);
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 16%);
+  --border: oklch(1 0 0 / 14%);
+  --input: oklch(1 0 0 / 20%);
   --ring: oklch(0.62 0.08 196);
 
   --skill: oklch(0.75 0.11 191);
@@ -141,8 +143,12 @@
   --sidebar-primary-foreground: oklch(0.16 0.02 200);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-border: oklch(1 0 0 / 14%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.28), 0 8px 24px -8px rgb(0 0 0 / 0.5);
+  --shadow-float: 0 16px 40px -12px rgb(0 0 0 / 0.62), 0 2px 8px rgb(0 0 0 / 0.3);
 }
 
 @layer base {
@@ -154,6 +160,132 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
+    background-image: radial-gradient(
+      1200px 520px at 50% -240px,
+      color-mix(in oklab, var(--primary) 7%, transparent),
+      transparent 72%
+    );
+    background-attachment: fixed;
+  }
+
+  /* 焦点基线：具体控件再用 .ui-focus-ring / .ui-focus-field 调整 offset 与浓度。 */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* 页面环境光：极淡的主色径向渐变，给平面背景一点纵深，不新增色板 */
+  .app-canvas {
+    background-color: var(--background);
+    background-image: radial-gradient(
+      1200px 520px at 50% -240px,
+      color-mix(in oklab, var(--primary) 7%, transparent),
+      transparent 72%
+    );
+  }
+
+  /* 侧栏：比画布亮一档，作为独立的中间层 */
+  .surface-sidebar {
+    background-color: color-mix(in oklab, var(--card) 72%, var(--background));
+    box-shadow: inset -1px 0 0 color-mix(in oklab, var(--border) 70%, transparent);
+  }
+
+  /* 凸起表面：顶部 1px 内高光 + 极短落影，用于内容容器 */
+  .surface-raised {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.7),
+      0 1px 2px rgb(16 24 40 / 0.05),
+      0 14px 28px -18px rgb(16 24 40 / 0.22);
+  }
+
+  .dark .surface-raised {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.055),
+      0 1px 2px rgb(0 0 0 / 0.28),
+      0 12px 28px -18px rgb(0 0 0 / 0.55);
+  }
+
+  /* 凹陷表面：填充画布色 + 内阴影，在卡片上呈现下沉感，用于输入框与内嵌区块 */
+  .surface-inset {
+    background-color: var(--background);
+    box-shadow:
+      inset 0 1px 2px rgb(16 24 40 / 0.07),
+      inset 0 0 0 1px rgb(16 24 40 / 0.02);
+  }
+
+  .dark .surface-inset {
+    background-color: color-mix(in oklab, var(--background) 70%, var(--card));
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.35);
+  }
+
+  /* 小胶囊：只加顶部内高光，避免徽标过重 */
+  .surface-chip {
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.55);
+  }
+
+  .dark .surface-chip {
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  }
+
+  /* 主按钮：内高光 + 短落影，按下时切换为内阴影 */
+  .btn-raised {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.14),
+      0 1px 2px rgb(16 24 40 / 0.14),
+      0 6px 14px -8px color-mix(in oklab, var(--primary) 45%, transparent);
+  }
+
+  .btn-raised:active {
+    box-shadow: inset 0 1px 3px rgb(16 24 40 / 0.2);
+  }
+
+  .dark .btn-raised {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.16),
+      0 1px 2px rgb(0 0 0 / 0.3),
+      0 6px 16px -8px color-mix(in oklab, var(--primary) 35%, transparent);
+  }
+
+  /* P1 · 交互反馈：可点击元素统一 120ms 与同一缓动，不给静态容器加过渡。 */
+  .ui-interactive {
+    transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+    transition-duration: var(--ui-motion-duration);
+    transition-timing-function: var(--ui-motion-ease);
+  }
+
+  .ui-pressable:active:not(:disabled):not([aria-disabled="true"]) {
+    transform: translateY(0.5px);
+  }
+
+  .ui-slide {
+    transition-property: transform;
+    transition-duration: var(--ui-motion-duration);
+    transition-timing-function: var(--ui-motion-ease);
+  }
+
+  /* P1 · 焦点态：外置环用于按钮 / 链接，内嵌环用于整行或侧栏条目。 */
+  .ui-focus-ring:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  .ui-focus-ring-inset:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+  }
+
+  /* P1 · 字段焦点：边框着色 + 紧贴控件的淡色轮廓，保留 surface-inset 的内阴影。 */
+  .ui-focus-field:focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--ring) 35%, transparent);
+    outline-offset: 0;
+  }
+
+  /* P1 · 整行焦点：焦点在覆盖整行的标题链接上，视觉环落在行容器。 */
+  .ui-focus-row:has([data-row-link]:focus-visible) {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
   }
 }
 
@@ -174,11 +306,6 @@
 
 ::selection {
   background: color-mix(in oklab, var(--skill) 30%, transparent);
-}
-
-:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
 }
 
 * {
@@ -208,12 +335,23 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-message-in {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .animate-message-in,
+  .animate-pulse {
     animation: none;
   }
 
-  /* 低动效偏好下取消颜色 / 背景过渡，交互结果直接呈现。 */
+  /* 低动效偏好下取消过渡，交互结果直接呈现；加载用的 rotate 动画保留。 */
+  .ui-interactive,
+  .ui-slide,
   .transition-colors {
     transition-duration: 0s;
+  }
+
+  .ui-pressable:active:not(:disabled):not([aria-disabled="true"]) {
+    transform: none;
   }
 }

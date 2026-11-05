@@ -1,10 +1,13 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
+  BrainCircuit,
+  FlaskConical,
+  LibraryBig,
   Loader2,
   Package,
   ShieldCheck,
@@ -24,6 +27,7 @@ import {
 } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { DEMO_ADMIN_USER, resetDemoState } from '@/lib/knowledge-demo';
 import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
@@ -39,14 +43,31 @@ const NAV_ITEMS = [
     description: '广场 / 安装 / 发布',
     icon: Package,
   },
+  {
+    href: '/admin/knowledge',
+    label: '知识库',
+    description: '文档 / 切片 / 授权',
+    icon: LibraryBig,
+  },
+  {
+    href: '/admin/experts',
+    label: '专家模型',
+    description: '提示词 / 知识库 / 授权',
+    icon: BrainCircuit,
+  },
 ] as const;
 
+/** 按最长前缀匹配，避免 /admin/experts/new 落到别的标题（设计 §3.2）。 */
 function currentPage(pathname: string): { title: string; href: string } {
-  if (pathname.startsWith('/admin/skills')) {
-    return { title: '技能管理', href: '/admin/skills' };
-  }
-  return { title: '权限规则', href: '/admin/permissions' };
+  const matched = [...NAV_ITEMS]
+    .sort((a, b) => b.href.length - a.href.length)
+    .find((item) => pathname.startsWith(item.href));
+  return matched
+    ? { title: matched.label, href: matched.href }
+    : { title: '权限规则', href: '/admin/permissions' };
 }
+
+const PREVIEW_STORAGE_KEY = 'aoteman-admin-preview';
 
 /**
  * 管理后台外壳：桌面 220px sticky 左栏，移动端顶部水平 Tab。
@@ -58,20 +79,100 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
   const { user, ready } = useCurrentUser();
   const mainRef = useRef<HTMLElement>(null);
+  const mobileNavRef = useRef<HTMLElement>(null);
+  // 移动端 Tab 超出屏宽时，把被截断的一侧淡出：激活项居中会把左右多余的 Tab
+  // 硬切在屏幕边缘，看起来像渲染错误而不是「还能滑动」。
+  const [navOverflow, setNavOverflow] = useState({ start: false, end: false });
   const page = currentPage(pathname);
 
+  // 静态预览：控制面未启动时也能走查页面。带 ?preview=1 进入，标记存 sessionStorage，
+  // 之后站内跳转保持；生产构建下整段逻辑被 NODE_ENV 判断裁掉，不影响真实鉴权。
+  const [devPreview, setDevPreview] = useState(false);
+
   useEffect(() => {
-    if (ready && !user) {
+    if (process.env.NODE_ENV === 'production') return;
+    try {
+      const wantsPreview = new URLSearchParams(window.location.search).get('preview') === '1';
+      if (wantsPreview) {
+        window.sessionStorage.setItem(PREVIEW_STORAGE_KEY, '1');
+        setDevPreview(true);
+        return;
+      }
+      setDevPreview(window.sessionStorage.getItem(PREVIEW_STORAGE_KEY) === '1');
+    } catch {
+      setDevPreview(false);
+    }
+  }, [pathname]);
+
+  const activeUser = user ?? (devPreview ? DEMO_ADMIN_USER : null);
+
+  useEffect(() => {
+    if (!devPreview && ready && !user) {
       router.replace('/login');
     }
-  }, [ready, user, router]);
+  }, [devPreview, ready, user, router]);
+
+  function exitPreview() {
+    try {
+      window.sessionStorage.removeItem(PREVIEW_STORAGE_KEY);
+    } catch {
+      // 忽略。
+    }
+    setDevPreview(false);
+    router.replace('/admin/knowledge');
+  }
+
+  function resetPreviewData() {
+    resetDemoState();
+    window.location.reload();
+  }
 
   // 管理后台的滚动容器是 main，路由切换后手动回到顶部。
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
   }, [pathname]);
 
-  if (!ready || !user) {
+  // 移动端顶部 Tab 是可横向滚动的：把当前模块滚到中间，
+  // 否则从侧栏点进「专家模型」时，激活项会停在屏幕外看不见。
+  // 依赖 ready：首屏先渲染登录校验占位，shell 出现时 pathname 不会变，
+  // 只盯 pathname 会漏掉这一次布局。
+  useEffect(() => {
+    const nav = mobileNavRef.current;
+    if (!nav) return;
+    const active = nav.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!active) return;
+    const frame = requestAnimationFrame(() => {
+      const navRect = nav.getBoundingClientRect();
+      if (navRect.width === 0) return; // 桌面端 nav 隐藏，跳过。
+      const activeRect = active.getBoundingClientRect();
+      nav.scrollBy({
+        left: activeRect.left - navRect.left - (navRect.width - activeRect.width) / 2,
+        behavior: 'smooth',
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pathname, ready]);
+
+  useEffect(() => {
+    const nav = mobileNavRef.current;
+    if (!nav) return;
+    const update = () => {
+      const max = nav.scrollWidth - nav.clientWidth;
+      const start = nav.scrollLeft > 4;
+      const end = max > 4 && nav.scrollLeft < max - 4;
+      setNavOverflow((current) => (current.start === start && current.end === end ? current : { start, end }));
+    };
+    update();
+    nav.addEventListener('scroll', update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(nav);
+    return () => {
+      nav.removeEventListener('scroll', update);
+      observer.disconnect();
+    };
+  }, [ready, pathname]);
+
+  if (!ready || !activeUser) {
     return (
       <div className="flex h-dvh flex-col items-center justify-center gap-3 bg-background px-6 text-center text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden="true" />
@@ -82,9 +183,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
+  // 只遮掉真正被截断的那一侧；容器不溢出时不加 mask，避免误伤首尾 Tab 的圆角与焦点环。
+  const navMask =
+    navOverflow.start || navOverflow.end
+      ? `linear-gradient(to right, ${
+          navOverflow.start ? 'transparent 0, #000 24px' : '#000 0'
+        }, ${navOverflow.end ? '#000 calc(100% - 24px), transparent 100%' : '#000 100%'})`
+      : undefined;
+
   return (
-    <AdminUserProvider user={user}>
-      <div className="flex h-dvh overflow-hidden bg-background text-foreground">
+    <AdminUserProvider user={activeUser}>
+      <div className="app-canvas flex h-dvh overflow-hidden text-foreground">
         <a
           href="#admin-main"
           className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:shadow-card focus:ring-2 focus:ring-ring"
@@ -92,7 +201,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           跳到管理内容
         </a>
 
-        <aside className="hidden w-[220px] shrink-0 flex-col border-r border-border/60 bg-muted/20 lg:flex">
+        <aside className="surface-sidebar hidden w-[220px] shrink-0 flex-col lg:flex">
           <div className="flex h-14 items-center gap-2.5 border-b border-border/60 px-5">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Sparkles className="h-4 w-4" aria-hidden="true" />
@@ -113,20 +222,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   href={item.href}
                   aria-current={active ? 'page' : undefined}
                   className={cn(
-                    'flex items-start gap-2.5 rounded-md px-3 py-2.5 text-sm transition-colors',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                    'ui-interactive ui-focus-ring-inset relative flex items-start gap-2.5 rounded-md px-3 py-2.5 text-sm',
                     active
-                      ? 'bg-primary/10 text-primary'
+                      ? 'bg-primary/10 text-primary shadow-[inset_0_1px_0_rgb(255_255_255/0.45)]'
                       : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                   )}
                 >
+                  {active && (
+                    <span
+                      className="absolute left-0 top-2 h-[calc(100%-1rem)] w-0.5 rounded-full bg-primary"
+                      aria-hidden="true"
+                    />
+                  )}
                   <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                   <span className="min-w-0">
                     <span className="block font-medium">{item.label}</span>
                     <span
                       className={cn(
                         'mt-0.5 block text-[11px]',
-                        active ? 'text-primary/70' : 'text-muted-foreground/70',
+                        active ? 'text-primary' : 'text-muted-foreground',
                       )}
                     >
                       {item.description}
@@ -139,13 +253,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
           <div className="border-t border-border/60 p-4">
             <p className="text-[11px] leading-relaxed text-muted-foreground">
-              规则与技能均只作用于当前账号；管理员不会因此获得他人规则的代管能力。
+              知识库与专家由管理员统一维护，授权到用户；v1 没有组织与角色维度。
             </p>
           </div>
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="z-30 shrink-0 border-b border-border/60 bg-background/85 backdrop-blur">
+          <header className="z-30 shrink-0 border-b border-border/60 bg-background/80 backdrop-blur-xl">
             <div className="flex h-14 items-center justify-between gap-3 px-4 sm:px-6">
               <div className="flex min-w-0 items-center gap-2.5">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary lg:hidden">
@@ -176,7 +290,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-9 gap-1.5 px-2"
+                  className="h-11 w-11 justify-center gap-1.5 px-0 md:h-9 md:w-auto md:px-2"
                   asChild
                   title="返回工作台"
                 >
@@ -191,8 +305,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
 
             <nav
+              ref={mobileNavRef}
               aria-label="管理后台导航"
-              className="grid grid-cols-2 gap-1 border-t border-border/50 px-3 py-2 lg:hidden"
+              className="flex items-center gap-1 overflow-x-auto border-t border-border/50 px-3 py-2 [scrollbar-width:none] lg:hidden [&::-webkit-scrollbar]:hidden"
+              style={{ maskImage: navMask, WebkitMaskImage: navMask }}
             >
               {NAV_ITEMS.map((item) => {
                 const active = pathname.startsWith(item.href);
@@ -203,19 +319,44 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     href={item.href}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'flex min-w-0 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                      'ui-interactive ui-focus-ring flex min-h-11 min-w-0 flex-1 basis-0 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-sm font-medium sm:flex-none sm:basis-auto sm:px-3',
                       active
                         ? 'bg-primary/10 text-primary'
                         : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                     )}
                   >
-                    <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <Icon className="hidden h-4 w-4 shrink-0 sm:block" aria-hidden="true" />
                     <span className="truncate">{item.label}</span>
                   </Link>
                 );
               })}
             </nav>
+
+            {devPreview && (
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-warning/30 bg-warning/10 px-4 py-1.5 text-[11px] text-foreground/80 sm:px-6">
+                <span className="flex items-center gap-1.5">
+                  <FlaskConical className="h-3.5 w-3.5 text-warning" aria-hidden="true" />
+                  <span className="sm:hidden">静态预览</span>
+                  <span className="hidden sm:inline">静态预览：使用本地演示数据，未连接控制面。</span>
+                </span>
+                <span className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={resetPreviewData}
+                    className="ui-interactive ui-focus-ring -mx-1 inline-flex min-h-11 items-center rounded-sm px-1 py-1.5 underline underline-offset-2 hover:text-foreground md:-my-1.5 md:min-h-8"
+                  >
+                    重置演示数据
+                  </button>
+                  <button
+                    type="button"
+                    onClick={exitPreview}
+                    className="ui-interactive ui-focus-ring -mx-1 inline-flex min-h-11 items-center rounded-sm px-1 py-1.5 underline underline-offset-2 hover:text-foreground md:-my-1.5 md:min-h-8"
+                  >
+                    退出预览
+                  </button>
+                </span>
+              </div>
+            )}
           </header>
 
           <main

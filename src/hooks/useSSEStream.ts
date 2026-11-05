@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import type { SSEEvent, TraceEntry, Message, Thinking, Narration, ToolUse, ToolConfirmation } from '@/types/agent';
+import type { ExpertRef } from '@/types/knowledge';
+import type { Citation } from '@/types/citation';
+import { toCitation, type CitationViewDto } from '@/lib/knowledge-api';
 
 interface SSEStreamCallbacks {
   onMessage?: (message: Message) => void;
@@ -16,6 +19,8 @@ interface SSEStreamCallbacks {
   onNarration?: (narration: Narration) => void;
   /** 移除一条（尚未落盘的）助理气泡，例如流式内容被判定为中间叙述时 */
   onMessageRemove?: (id: string) => void;
+  /** 一轮内每个 knowledge_search 产出的引用快照（同一 toolCallId 后端只发一次）。 */
+  onCitation?: (citations: Citation[], toolCallId: string, turnId: number) => void;
   onToolUse?: (toolUse: ToolUse) => void;
   onToolResult?: (toolResult: ToolUse) => void;
   onSkillUse?: (skillUse: ToolUse) => void;
@@ -45,11 +50,51 @@ interface SSEStreamState {
  * 只在未命名事件时触发，所以必须对每个类型单独 addEventListener。
  * 这里对齐静态页 index.html：所有命名事件都进同一个 handleEvent(data) 分发。
  */
+/**
+ * 解析 user.message 里的专家快照。
+ *
+ * 依据：aoteman-platform/doc/design/2026-11-02-知识库与专家模型设计.md §8.2
+ * —— 客户端只提交 expertIds，服务端校验通过后把 experts 快照补进同一 payload 再落盘。
+ * 历史数据可能只有 expertIds，此时名称已无从得知，用占位名兜底，不臆造名称。
+ */
+function parseExpertSnapshot(payload: Record<string, unknown>): ExpertRef[] | undefined {
+  if (Array.isArray(payload.experts)) {
+    const parsed: ExpertRef[] = [];
+    for (const item of payload.experts) {
+      if (!item || typeof item !== 'object') continue;
+      const record = item as Record<string, unknown>;
+      const expertId = String(record.expertId ?? record.expert_id ?? '');
+      if (!expertId) continue;
+      const name = String(record.name ?? '').trim();
+      const promptHash = record.promptHash ?? record.prompt_hash;
+      parsed.push({
+        expertId,
+        name: name || expertId,
+        promptHash: promptHash == null || promptHash === '' ? null : String(promptHash),
+      });
+    }
+    return parsed.length > 0 ? parsed : undefined;
+  }
+
+  if (Array.isArray(payload.expertIds)) {
+    const parsed: ExpertRef[] = [];
+    for (const id of payload.expertIds) {
+      const expertId = String(id ?? '');
+      if (!expertId) continue;
+      parsed.push({ expertId, name: '专家', promptHash: null });
+    }
+    return parsed.length > 0 ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
 const STREAM_EVENT_TYPES: string[] = [
   'event_start',
   'event_delta',
   'agent.event',
   'agent.message',
+  'agent.citation',
   'agent.thinking',
   'agent.narration',
   'user.message',
@@ -255,12 +300,14 @@ export function useSSEStream(
         const text = String(payload.text || '');
         if (!text) break;
         turnIdRef.current += 1;
+        const experts = parseExpertSnapshot(payload);
         callbacksRef.current.onMessage?.({
           id: eventId || generateMessageId(),
           type: 'user',
           content: text,
           timestamp: Date.now(),
           turnId: turnIdRef.current,
+          ...(experts ? { experts } : {}),
         });
         addTraceEntry('user.message', text.slice(0, 80), payload);
         break;
@@ -328,6 +375,23 @@ export function useSSEStream(
           timestamp: Date.now(),
         });
         addTraceEntry('agent.narration', text.slice(0, 80), payload);
+        break;
+      }
+
+      /* ---------------- 引用快照 ---------------- */
+      case 'agent.citation': {
+        const rawCitations = Array.isArray(payload.citations) ? payload.citations : [];
+        const toolCallId = String(payload.toolCallId ?? '');
+        const citations = rawCitations
+          .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+          .map((item) => toCitation(item as unknown as CitationViewDto))
+          .filter((citation) => Boolean(citation.ref));
+        // 后端 agent.citation 落盘时 eventId 为 null，重连回放会重复到达；
+        // 去重放在页面按 turnId 聚合时做（citationId / toolCallId + ref）。
+        if (citations.length > 0) {
+          callbacksRef.current.onCitation?.(citations, toolCallId, turnId);
+        }
+        addTraceEntry('agent.citation', `引用 ${citations.length} 条`, payload);
         break;
       }
 

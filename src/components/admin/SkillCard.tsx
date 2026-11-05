@@ -50,7 +50,7 @@ export function SkillCard({
   const disabled = busy || adminBusy;
 
   return (
-    <article className="flex min-h-[196px] min-w-0 flex-col bg-card transition-colors hover:bg-accent/10">
+    <article className="ui-interactive flex min-h-[196px] min-w-0 flex-col bg-card hover:bg-accent/10">
       <div className="flex flex-1 flex-col gap-2.5 p-4">
         <div className="flex items-start gap-2.5">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">

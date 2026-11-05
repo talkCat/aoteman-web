@@ -70,7 +70,7 @@ export function PermissionCatalogTable({
 }) {
   if (loading) {
     return (
-      <div className="overflow-hidden rounded-lg border border-border/70 bg-card" aria-busy="true">
+      <div className="surface-raised overflow-hidden rounded-xl border border-border/70 bg-card" aria-busy="true">
         {Array.from({ length: 6 }).map((_, index) => (
           <Skeleton
             key={index}
@@ -86,7 +86,7 @@ export function PermissionCatalogTable({
 
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-border/70 bg-card px-6 py-10 text-center text-sm text-muted-foreground">
+      <div className="surface-raised rounded-xl border border-dashed border-border/70 bg-card px-6 py-10 text-center text-sm text-muted-foreground">
         目录里还没有工具。
       </div>
     );
@@ -94,7 +94,7 @@ export function PermissionCatalogTable({
 
   return (
     <>
-      <div className="hidden overflow-hidden rounded-lg border border-border/70 bg-card md:block">
+      <div className="surface-raised hidden overflow-hidden rounded-xl border border-border/70 bg-card md:block">
         <Table className="table-fixed text-[13px]" aria-label="工具权限目录">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -144,7 +144,7 @@ export function PermissionCatalogTable({
         </Table>
       </div>
 
-      <ul className="divide-y divide-border/70 overflow-hidden rounded-lg border border-border/70 bg-card md:hidden">
+      <ul className="surface-raised divide-y divide-border/70 overflow-hidden rounded-xl border border-border/70 bg-card md:hidden">
         {items.map((item) => (
           <li
             key={item.toolName}

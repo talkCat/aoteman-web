@@ -106,7 +106,7 @@ export function SessionSidebar({
     <aside
       aria-label="项目与历史对话"
       className={cn(
-        'flex w-60 shrink-0 flex-col border-r border-border/60 bg-background/60',
+        'surface-sidebar flex w-60 shrink-0 flex-col',
         className
       )}
     >
@@ -127,7 +127,7 @@ export function SessionSidebar({
           <Folder className="h-3.5 w-3.5" />
           项目
         </div>
-        <p className="rounded-md bg-muted/50 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground/70">
+        <p className="rounded-md bg-muted/50 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
           项目即将开放，用于归集同一主题下的多个会话。
         </p>
       </div>
@@ -139,12 +139,12 @@ export function SessionSidebar({
         </div>
 
         {loading && sessions.length === 0 ? (
-          <div className="flex items-center gap-2 px-1 py-2 text-[11px] text-muted-foreground/70">
+          <div className="flex items-center gap-2 px-1 py-2 text-[11px] text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             加载中…
           </div>
         ) : sessions.length === 0 ? (
-          <p className="rounded-md bg-muted/50 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground/70">
+          <p className="rounded-md bg-muted/50 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
             还没有历史对话，发送第一条消息后会出现在这里。
           </p>
         ) : (
@@ -173,14 +173,14 @@ export function SessionSidebar({
                             cancelEdit();
                           }
                         }}
-                        className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary"
+                        className="ui-interactive ui-focus-field min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-xs text-foreground outline-none"
                       />
                       <button
                         type="button"
                         onClick={() => void commitEdit(session.sessionId)}
                         title="保存"
                         aria-label="保存标题"
-                        className="rounded p-1 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                        className="ui-interactive ui-focus-ring rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
                       >
                         <Check className="h-3.5 w-3.5" />
                       </button>
@@ -189,7 +189,7 @@ export function SessionSidebar({
                         onClick={cancelEdit}
                         title="取消"
                         aria-label="取消重命名"
-                        className="rounded p-1 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                        className="ui-interactive ui-focus-ring rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -207,7 +207,7 @@ export function SessionSidebar({
                     aria-current={active ? 'true' : undefined}
                     title={label}
                     className={cn(
-                      'w-full cursor-pointer rounded-md px-2.5 py-2 text-left transition-colors',
+                      'ui-interactive ui-focus-ring-inset w-full cursor-pointer rounded-md px-2.5 py-2 text-left',
                       canRename || canDelete ? 'pr-14' : '',
                       active
                         ? 'bg-primary/10 text-foreground'
@@ -215,7 +215,7 @@ export function SessionSidebar({
                     )}
                   >
                     <div className="truncate text-xs font-medium">{label}</div>
-                    <div className="mt-0.5 text-[10px] text-muted-foreground/70">
+                    <div className="mt-0.5 text-[10px] text-muted-foreground">
                       {formatRelativeTime(session.updatedAt)}
                     </div>
                   </button>
@@ -229,7 +229,7 @@ export function SessionSidebar({
                           onClick={() => startEdit(session)}
                           title="重命名"
                           aria-label="重命名会话"
-                          className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                          className="ui-interactive ui-focus-ring rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
@@ -241,7 +241,7 @@ export function SessionSidebar({
                           onClick={() => void handleDelete(session)}
                           title="删除"
                           aria-label="删除会话"
-                          className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                          className="ui-interactive ui-focus-ring rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                         >
                           {busy ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />

@@ -228,7 +228,7 @@ export function SkillMarketPanel({
               type="button"
               onClick={() => setFilter('all')}
               className={cn(
-                'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                'ui-interactive ui-focus-ring rounded-md px-2.5 py-1 text-xs font-medium',
                 filter === 'all'
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
@@ -240,7 +240,7 @@ export function SkillMarketPanel({
               type="button"
               onClick={() => setFilter('installed')}
               className={cn(
-                'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                'ui-interactive ui-focus-ring rounded-md px-2.5 py-1 text-xs font-medium',
                 filter === 'installed'
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
@@ -295,7 +295,7 @@ export function SkillMarketPanel({
                   <div
                     key={skill.name}
                     className={cn(
-                      'rounded-xl border border-border/70 p-4 transition-colors',
+                      'rounded-xl border border-border/70 p-4',
                       skill.installed && 'border-success/30 bg-success/5'
                     )}
                   >

@@ -43,7 +43,7 @@ export function UserMenu() {
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9"
+          className="h-11 w-11 md:h-9 md:w-9"
           title={label}
           aria-label={"账号：" + label}
         >

@@ -8,9 +8,6 @@ import { useSSEStream } from '@/hooks/useSSEStream';
 import { normalizeFollowupInput } from '@/lib/followup';
 import type { Identity, Message, Thinking, Narration, ToolUse, ToolConfirmation, FollowupQuestionnaire, FollowupAnswer, Notification, TurnGroup } from '@/types/agent';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -19,17 +16,39 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { SessionSidebar } from '@/components/SessionSidebar';
 import { TurnAnchorRail } from '@/components/TurnAnchorRail';
 import { Markdown } from '@/components/Markdown';
+import { MessageComposer } from '@/components/chat/MessageComposer';
+import { UserMessageExperts } from '@/components/chat/UserMessageExperts';
+import { CitationList } from '@/components/chat/CitationList';
+import { CitationSheet } from '@/components/chat/CitationSheet';
 import { UserMenu } from '@/components/UserMenu';
 import { SkillMarketPanel } from '@/components/SkillMarketPanel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useSessions } from '@/hooks/useSessions';
+import { useExpertSelection } from '@/hooks/useExpertSelection';
+import { citationsForTurn } from '@/lib/citation-demo';
+import { mergeCitations } from '@/lib/citation-order';
+import { CHAT_PREVIEW_STORAGE_KEY, buildDemoConversation, buildDemoReply } from '@/lib/chat-demo';
+import { DEMO_ADMIN_USER } from '@/lib/knowledge-demo';
+import type { Citation } from '@/types/citation';
+import type { ExpertRef } from '@/types/knowledge';
 import { getLastSessionId, setLastSessionId } from '@/lib/session';
 import { TurnArtifacts } from '@/components/TurnArtifacts';
 import { fetchArtifacts, isMarkdownArtifactWrite, matchTurnArtifacts, type ArtifactItem } from '@/lib/artifacts';
-import { ChevronDown, Send, Square, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Check, Menu, Store, LayoutDashboard } from 'lucide-react';
+import { ChevronDown, RotateCcw, Moon, Sun, Bot, User, Wrench, Sparkles, MessageSquareText, AlertCircle, CheckCircle, XCircle, Loader2, Check, Menu, Store, LayoutDashboard, FlaskConical } from 'lucide-react';
 
 // 生成随机 ID
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+// 空引用数组必须保持稳定身份：Markdown 用 citations 推导插件，数组每次换新会重建徽标 DOM。
+const EMPTY_CITATIONS: Citation[] = [];
+
+// 回答正文里是否至少标注了一个本轮真实存在的引用（决定参考资料区的标题文案）。
+// 只认 [K*] 字面量，避免把编造的 [K9] 当作已标注。
+function hasCitationAnnotation(content: string, citations: Citation[]): boolean {
+  if (!content || citations.length === 0) return false;
+  const upper = content.toUpperCase();
+  return citations.some((citation) => upper.includes(`[${citation.ref.toUpperCase()}]`));
+}
 
 // 工具名称映射
 const TOOL_NAME_MAP: Record<string, string> = {
@@ -121,7 +140,7 @@ function ToolStep({ tool }: { tool: ToolUse }) {
           {display}
           {arg && <span className="font-normal text-muted-foreground"> · {arg}</span>}
         </span>
-        <span className="shrink-0 text-[11px] text-muted-foreground/70">{isSkill ? '技能' : '工具'}</span>
+        <span className="shrink-0 text-[11px] text-muted-foreground">{isSkill ? '技能' : '工具'}</span>
         <ToolStatusIcon status={tool.status} />
         {hasDetails && (
           <ChevronDown className={`h-3 w-3 shrink-0 text-muted-foreground/60 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -131,13 +150,13 @@ function ToolStep({ tool }: { tool: ToolUse }) {
         <div className="mt-2 space-y-2">
           {tool.input && (
             <div>
-              <div className="mb-0.5 text-[11px] text-muted-foreground/70">输入</div>
+              <div className="mb-0.5 text-[11px] text-muted-foreground">输入</div>
               <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground">{tool.input}</pre>
             </div>
           )}
           {tool.output && (
             <div>
-              <div className="mb-0.5 text-[11px] text-muted-foreground/70">
+              <div className="mb-0.5 text-[11px] text-muted-foreground">
                 输出{tool.output.length > 200 ? `（${tool.output.length} 字符）` : ''}
               </div>
               <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground">{tool.output}</pre>
@@ -177,7 +196,7 @@ function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boo
             setOpen(next);
           }}
         >
-          <CollapsibleTrigger className="group flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
+          <CollapsibleTrigger className="ui-interactive ui-focus-ring group flex min-h-11 items-center gap-1.5 rounded-sm py-2 pr-2 text-xs md:-my-2 md:min-h-8 text-muted-foreground hover:text-foreground">
             {isActive ? (
               <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
             ) : (
@@ -195,7 +214,7 @@ function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boo
                 if (step.kind === 'narration') {
                   return (
                     <div key={step.key} className="ml-0.5 border-l-2 border-border pl-3">
-                      <div className="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
+                      <div className="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                         <MessageSquareText className="h-3 w-3" />
                         <span>过程</span>
                       </div>
@@ -270,15 +289,80 @@ export default function AgentChatPage() {
     setFrameChecked(true);
   }, []);
 
+  // 静态预览：控制面 / 数据面未启动时也能走查问答页。带 ?preview=1 进入，
+  // 标记存 sessionStorage 供站内跳转保持；生产构建下整段逻辑被裁掉，不影响真实鉴权。
+  const [devPreview, setDevPreview] = useState(false);
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    try {
+      const wantsPreview = new URLSearchParams(window.location.search).get('preview') === '1';
+      if (wantsPreview) {
+        window.sessionStorage.setItem(CHAT_PREVIEW_STORAGE_KEY, '1');
+        setDevPreview(true);
+        return;
+      }
+      setDevPreview(window.sessionStorage.getItem(CHAT_PREVIEW_STORAGE_KEY) === '1');
+    } catch {
+      setDevPreview(false);
+    }
+  }, []);
+
+  // 预览身份只用于展示，不参与任何真实请求
+  const activeUser = currentUser ?? (devPreview ? DEMO_ADMIN_USER : null);
+
   // 登录态校验失败（未登录 / token 失效 / 身份服务不可达）：顶层页面回登录页。
   // 与 admin/layout.tsx 的页面级守卫保持一致；内嵌场景不跳转，保持 anonymous 可用。
   useEffect(() => {
-    if (!authReady || !frameChecked || currentUser || isEmbedded) return;
+    if (!authReady || !frameChecked || currentUser || isEmbedded || devPreview) return;
     router.replace('/login');
-  }, [authReady, frameChecked, currentUser, isEmbedded, router]);
+  }, [authReady, frameChecked, currentUser, isEmbedded, devPreview, router]);
 
   // 身份状态：userId 来自真实登录用户，sessionId 是本地会话标识
   const [identity, setIdentity] = useState<Identity>({ userId: '', sessionId: '' });
+
+  // 问答页专家多选：最多 5 个、记忆上次选择、只影响下一轮（设计 §10.3）。
+  // 数据源是「已发布且已授权」的摘要，不含 systemPrompt。
+  const expertSelection = useExpertSelection(
+    identity.userId,
+    activeUser?.roles.includes('ADMIN') ?? false,
+    devPreview,
+  );
+
+  // 引用详情抽屉：只存 citationId，详情按需查询（设计 §11.4）
+  const [citationId, setCitationId] = useState<string | null>(null);
+  // 真实引用按轮次聚合：一轮可能有多次 knowledge_search，每个 toolCallId 一个 agent.citation。
+  const [citationsByTurn, setCitationsByTurn] = useState<Record<number, Citation[]>>({});
+  // 抽屉没有 SheetTrigger，Radix 无法自动把焦点还回去；手动记住触发它的引用按钮
+  const citationTriggerRef = useRef<HTMLElement | null>(null);
+  const citationTriggerLabelRef = useRef<string | null>(null);
+  const openCitation = useCallback((citation: Citation) => {
+    if (!citation.citationId) return;
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    citationTriggerRef.current = active;
+    citationTriggerLabelRef.current = active?.getAttribute('aria-label') ?? null;
+    setCitationId(citation.citationId);
+  }, []);
+  // 关闭只负责收起抽屉；焦点由 Radix 的 onCloseAutoFocus 在关闭动画结束后交还，
+  // 此时遮罩与 aria-hidden 已撤销，提前 focus 会被浏览器判定为「把焦点藏进 aria-hidden」而告警。
+  const closeCitation = useCallback(() => {
+    setCitationId(null);
+  }, []);
+  const restoreCitationFocus = useCallback(() => {
+    const trigger = citationTriggerRef.current;
+    const triggerLabel = citationTriggerLabelRef.current;
+    citationTriggerRef.current = null;
+    citationTriggerLabelRef.current = null;
+    if (trigger?.isConnected) {
+      trigger.focus();
+      return;
+    }
+    // 引用数据每次聚合都可能换新对象，徽标会被重新挂载；旧节点脱离文档时按 aria-label 找回同一枚按钮
+    if (!triggerLabel) return;
+    const fallback = Array.from(document.querySelectorAll<HTMLElement>('button[aria-label]')).find(
+      (el) => el.getAttribute('aria-label') === triggerLabel,
+    );
+    fallback?.focus();
+  }, []);
 
   // 历史会话列表（侧边栏）：走 BFF /api/sessions → 数据面
   const {
@@ -287,13 +371,13 @@ export default function AgentChatPage() {
     refresh: refreshSessions,
     remove: removeSession,
     rename: renameSession,
-  } = useSessions(identity.userId);
+  } = useSessions(devPreview ? '' : identity.userId);
 
   // 对话消息
   const [messages, setMessages] = useState<Message[]>([]);
 
   // 本地乐观显示的用户消息：SSE 回显到达前先展示，回显后按文本匹配移除，避免「不显示」或「显示两遍」
-  const [pendingUserMessages, setPendingUserMessages] = useState<Array<{ id: string; content: string; timestamp: number }>>([]);
+  const [pendingUserMessages, setPendingUserMessages] = useState<Array<{ id: string; content: string; timestamp: number; experts?: ExpertRef[] }>>([]);
 
   // 思考过程
   const [thinking, setThinking] = useState<Thinking[]>([]);
@@ -329,6 +413,18 @@ export default function AgentChatPage() {
   const [inputValue, setInputValue] = useState('');
   const [deepThinking, setDeepThinking] = useState(false);
 
+  // 预览模式只种一次演示对话：之后点「新会话」保持空白，便于走查空状态。
+  const demoSeededRef = useRef(false);
+  useEffect(() => {
+    if (!devPreview || demoSeededRef.current || !identity.userId) return;
+    demoSeededRef.current = true;
+    const demo = buildDemoConversation();
+    setMessages(demo.messages);
+    setThinking(demo.thinking);
+    setNarrations(demo.narrations);
+    setToolUses(demo.toolUses);
+  }, [devPreview, identity.userId]);
+
   // 技能广场面板开关
   const [skillPanelOpen, setSkillPanelOpen] = useState(false);
 
@@ -340,7 +436,7 @@ export default function AgentChatPage() {
   const thinkingMapRef = useRef<Map<string, Thinking>>(new Map());
 
   // 待回显的乐观用户消息（用于与 SSE user.message 回显做匹配去重）
-  const pendingUserRef = useRef<Array<{ id: string; content: string }>>([]);
+  const pendingUserRef = useRef<Array<{ id: string; content: string; experts?: ExpertRef[] }>>([]);
 
   // 已经渲染/提交过的追问工具 id，避免提交后问卷被同一个工具重复触发
   const handledFollowupIdsRef = useRef<Set<string>>(new Set());
@@ -353,15 +449,6 @@ export default function AgentChatPage() {
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
-
-  // 输入框自适应高度（上限 160px）
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
-  }, [inputValue]);
 
   // 添加通知
   const addNotification = useCallback((type: Notification['type'], message: string) => {
@@ -388,6 +475,7 @@ export default function AgentChatPage() {
     setToolUses([]);
     setToolConfirmations([]);
     setFollowupQuestionnaire(null);
+    setCitationsByTurn({});
     setError(null);
     messageMapRef.current.clear();
     thinkingMapRef.current.clear();
@@ -398,8 +486,8 @@ export default function AgentChatPage() {
   useEffect(() => {
     if (!authReady || identity.sessionId) return;
     // 顶层未登录：等待跳转登录页，不初始化匿名身份
-    if (!currentUser && !isEmbedded) return;
-    const userId = currentUser?.userId || 'anonymous';
+    if (!currentUser && !isEmbedded && !devPreview) return;
+    const userId = currentUser?.userId || (devPreview ? DEMO_ADMIN_USER.userId : 'anonymous');
     const urlSession =
       typeof window !== 'undefined'
         ? new URLSearchParams(window.location.search).get('session')
@@ -408,7 +496,7 @@ export default function AgentChatPage() {
       userId,
       sessionId: urlSession || getLastSessionId(userId) || generateId(),
     });
-  }, [authReady, currentUser, identity.sessionId, isEmbedded]);
+  }, [authReady, currentUser, identity.sessionId, isEmbedded, devPreview]);
 
   // 会话切换 / 新建后同步写 localStorage 与 URL，保证刷新 / 分享都能续上历史（设计 §6.1）
   useEffect(() => {
@@ -421,6 +509,41 @@ export default function AgentChatPage() {
       window.history.replaceState(null, '', url.toString());
     }
   }, [identity.userId, identity.sessionId]);
+
+  // 引用抽屉与 URL 双向同步：保留 ?session=，只增删 ?citation=，方便分享与刷新回到同一处
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (citationId) url.searchParams.set('citation', citationId);
+    else url.searchParams.delete('citation');
+    window.history.replaceState(null, '', url.toString());
+  }, [citationId]);
+
+  // 首次进入时按 URL 打开引用抽屉（仅客户端读取，避免 SSR / 水合不一致）
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get('citation');
+    if (fromUrl) setCitationId(fromUrl);
+  }, []);
+
+  function exitPreview() {
+    try {
+      window.sessionStorage.removeItem(CHAT_PREVIEW_STORAGE_KEY);
+    } catch {
+      // 忽略。
+    }
+    setDevPreview(false);
+    router.replace('/login');
+  }
+
+  // 预览专用：把演示对话恢复到初始状态，方便反复走查引用抽屉与过程时间线
+  function resetPreviewConversation() {
+    clearConversation();
+    const demo = buildDemoConversation();
+    setMessages(demo.messages);
+    setThinking(demo.thinking);
+    setNarrations(demo.narrations);
+    setToolUses(demo.toolUses);
+  }
 
   // 新会话：userId 保持登录身份不变，仅换 sessionId 并清空当前对话
   const resetIdentity = useCallback(() => {
@@ -498,21 +621,62 @@ export default function AgentChatPage() {
     const text = inputValue.trim();
     setInputValue('');
 
+    // 静态预览：不走 BFF / SSE，只在本地追加一轮问答，便于走查引用与专家标记
+    if (devPreview) {
+      const demoExperts: ExpertRef[] = expertSelection.selectedExperts.map(expert => ({
+        expertId: expert.expertId,
+        name: expert.name,
+        promptHash: null,
+      }));
+      setMessages(prev => {
+        const turnId = prev.reduce((max, m) => Math.max(max, m.turnId ?? 0), 0) + 1;
+        return [
+          ...prev,
+          {
+            id: 'demo_user_' + generateId(),
+            type: 'user' as const,
+            content: text,
+            timestamp: Date.now(),
+            turnId,
+            ...(demoExperts.length > 0 ? { experts: demoExperts } : {}),
+          },
+          buildDemoReply(turnId, text),
+        ];
+      });
+      window.setTimeout(scrollToBottom, 60);
+      return;
+    }
+
+    // 专家快照只用于乐观展示；权威名称 / promptHash 以 SSE 回显的 user.message 快照为准
+    const expertIds = expertSelection.selectedIds;
+    const expertSnapshot: ExpertRef[] = expertSelection.selectedExperts.map(expert => ({
+      expertId: expert.expertId,
+      name: expert.name,
+      promptHash: null,
+    }));
+
     // 立即乐观展示，SSE 回显到达后自动换成带 turnId 的正式消息
     const localId = 'local_' + generateId();
-    const pending = { id: localId, content: text, timestamp: Date.now() };
+    const pending = {
+      id: localId,
+      content: text,
+      timestamp: Date.now(),
+      ...(expertSnapshot.length > 0 ? { experts: expertSnapshot } : {}),
+    };
     pendingUserRef.current = [...pendingUserRef.current, pending];
     setPendingUserMessages(prev => [...prev, pending]);
 
     // 提交事件；用户消息最终由 SSE 回显确定归属轮次
+    // 不选专家时也显式传 []，避免后端把「未传」当成其他语义（设计 §10.3）
     await submitEvent([{
       type: 'user.message',
       payload: {
         text,
         deepThinking,
+        expertIds,
       },
     }]);
-  }, [inputValue, deepThinking, submitEvent]);
+  }, [inputValue, deepThinking, submitEvent, expertSelection.selectedIds, expertSelection.selectedExperts, devPreview, scrollToBottom]);
 
   // 停止生成（中断当前运行）
   const stopGeneration = useCallback(async () => {
@@ -818,6 +982,24 @@ export default function AgentChatPage() {
     setThinking(prev => prev.map(t => t.isStreaming ? { ...t, isStreaming: false } : t));
   }, []);
 
+  // 引用按轮次聚合：同一片段可能在多次 knowledge_search 中重复命中，
+  // 按稳定来源去重并让后到达的快照覆盖先前快照（latest-wins）。
+  const handleCitation = useCallback(
+    (incoming: Citation[], toolCallId: string, turnId: number) => {
+      if (incoming.length === 0) return;
+      // 快照本身带 toolCallId；兜底用事件上的值补齐，保证草稿引用也能正确去重。
+      const batch = incoming.map(citation =>
+        citation.toolCallId || !toolCallId ? citation : { ...citation, toolCallId },
+      );
+      setCitationsByTurn(prev => {
+        const current = prev[turnId] ?? EMPTY_CITATIONS;
+        const merged = mergeCitations(current, batch);
+        if (merged === current) return prev;
+        return { ...prev, [turnId]: merged };
+      });
+    },
+    [],
+  );
   const handleError = useCallback((message: string) => {
     setError(message);
     addNotification('error', message);
@@ -965,8 +1147,8 @@ export default function AgentChatPage() {
 
   // SSE 连接
   const { isConnected, isRunning: sseRunning, beginUserTurn } = useSSEStream(
-    identity.sessionId,
-    identity.userId,
+    devPreview ? '' : identity.sessionId,
+    devPreview ? '' : identity.userId,
     {
       onMessage: handleMessage,
       onMessageUpdate: handleMessageUpdate,
@@ -976,6 +1158,7 @@ export default function AgentChatPage() {
       onThinkingFinalize: handleThinkingFinalize,
       onNarration: handleNarration,
       onMessageRemove: handleMessageRemove,
+      onCitation: handleCitation,
       onToolUse: handleToolUse,
       onToolResult: handleToolResult,
       onSkillUse: handleSkillUse,
@@ -998,7 +1181,7 @@ export default function AgentChatPage() {
   const mdWriteCount = toolUses.filter(isMarkdownArtifactWrite).length;
 
   useEffect(() => {
-    if (!identity.userId) return;
+    if (devPreview || !identity.userId) return;
     let alive = true;
     fetchArtifacts(identity.userId, identity.sessionId || undefined)
       .then(list => {
@@ -1010,15 +1193,7 @@ export default function AgentChatPage() {
     return () => {
       alive = false;
     };
-  }, [identity.userId, identity.sessionId, isRunning, sseRunning, mdWriteCount]);
-
-  // 键盘事件
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
+  }, [devPreview, identity.userId, identity.sessionId, isRunning, sseRunning, mdWriteCount]);
 
   // 复制文本
   const copyText = (text: string) => {
@@ -1130,11 +1305,11 @@ export default function AgentChatPage() {
   );
 
   // 身份信息（只读）：展示真实登录用户；不再允许手工改 userId / sessionId
-  const identityLabel = currentUser
-    ? (currentUser.displayName?.trim() || currentUser.username)
+  const identityLabel = activeUser
+    ? (activeUser.displayName?.trim() || activeUser.username)
     : '匿名 / 未登录';
-  const identityRoleLabel = currentUser
-    ? (currentUser.roles.includes('ADMIN') ? '管理员' : '普通用户')
+  const identityRoleLabel = activeUser
+    ? (activeUser.roles.includes('ADMIN') ? '管理员' : '普通用户')
     : '未登录';
   const renderIdentityField = (field: 'userId' | 'sessionId', label: string) => (
     <div className="space-y-1.5">
@@ -1145,7 +1320,7 @@ export default function AgentChatPage() {
     </div>
   );
   // 身份未确认前不渲染工作台：顶层未登录直接展示跳转占位，避免闪匿名界面 / 发无效请求
-  if (!authReady || !frameChecked || (!currentUser && !isEmbedded)) {
+  if (!authReady || !frameChecked || (!activeUser && !isEmbedded && !devPreview)) {
     return (
       <div className="flex h-dvh flex-col items-center justify-center gap-3 bg-background px-6 text-center text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden="true" />
@@ -1157,7 +1332,7 @@ export default function AgentChatPage() {
   }
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+    <div className="app-canvas flex h-dvh flex-col overflow-hidden text-foreground">
       <a
         href="#chat-main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:shadow-card focus:ring-2 focus:ring-ring"
@@ -1170,10 +1345,10 @@ export default function AgentChatPage() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <Bot className="h-5 w-5" />
           </div>
-          <h1 className="text-sm font-semibold tracking-tight">智能体工作台</h1>
-          <span className={`ml-1 hidden items-center gap-1.5 rounded-full border border-border/60 bg-card px-2 py-0.5 text-[11px] text-muted-foreground sm:inline-flex`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${isConnected ? 'bg-success' : 'bg-muted-foreground/50'}`} />
-            {isConnected ? '已连接' : '未连接'}
+          <h1 className="hidden text-sm font-semibold tracking-tight sm:block">智能体工作台</h1>
+          <span className={`ml-1 hidden items-center gap-1.5 surface-chip rounded-full border border-border/60 bg-card px-2 py-0.5 text-[11px] text-muted-foreground sm:inline-flex`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${devPreview ? 'bg-warning' : isConnected ? 'bg-success' : 'bg-muted-foreground/50'}`} />
+            {devPreview ? '预览模式' : isConnected ? '已连接' : '未连接'}
           </span>
         </div>
 
@@ -1181,7 +1356,7 @@ export default function AgentChatPage() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 lg:hidden"
+            className="h-11 w-11 md:h-9 md:w-9 lg:hidden"
             onClick={() => setShowToc(true)}
             title="会话导航"
             aria-label="会话导航"
@@ -1191,7 +1366,7 @@ export default function AgentChatPage() {
 
           <HoverCard>
             <HoverCardTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9" title="身份信息（只读）" aria-label="身份信息（只读）">
+              <Button variant="ghost" size="icon" className="h-11 w-11 md:h-9 md:w-9" title="身份信息（只读）" aria-label="身份信息（只读）">
                 <User className="h-4 w-4" />
               </Button>
             </HoverCardTrigger>
@@ -1215,22 +1390,22 @@ export default function AgentChatPage() {
             </HoverCardContent>
           </HoverCard>
 
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={resetIdentity} title="新会话" aria-label="新会话">
+          <Button variant="ghost" size="icon" className="h-11 w-11 md:h-9 md:w-9" onClick={resetIdentity} title="新会话" aria-label="新会话">
             <RotateCcw className="h-4 w-4" />
           </Button>
 
           <Button
             variant="ghost"
             size="sm"
-            className="h-9 gap-1.5 px-2.5"
+            className="h-11 w-11 gap-1.5 px-2.5 md:h-9 md:w-auto"
             onClick={() => setSkillPanelOpen(true)}
           >
             <Store className="h-4 w-4" />
             <span className="hidden lg:inline">技能广场</span>
           </Button>
 
-          {currentUser && (
-            <Button variant="ghost" size="icon" className="h-9 w-9" asChild title="管理后台" aria-label="管理后台">
+          {activeUser && (
+            <Button variant="ghost" size="icon" className="h-11 w-11 md:h-9 md:w-9" asChild title="管理后台" aria-label="管理后台">
               <Link href="/admin">
                 <LayoutDashboard className="h-4 w-4" />
               </Link>
@@ -1239,12 +1414,37 @@ export default function AgentChatPage() {
 
           <UserMenu />
 
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={toggleTheme} title={isDark ? '浅色模式' : '深色模式'}>
+          <Button variant="ghost" size="icon" className="h-11 w-11 md:h-9 md:w-9" onClick={toggleTheme} title={isDark ? '浅色模式' : '深色模式'}>
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
         </div>
       </header>
-      <div className="flex flex-1 overflow-hidden" id="chat-main">
+      {devPreview && (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-warning/30 bg-warning/10 px-4 py-1.5 text-[11px] text-foreground/80">
+          <span className="flex items-center gap-1.5">
+            <FlaskConical className="h-3.5 w-3.5 text-warning" aria-hidden="true" />
+            <span className="sm:hidden">静态预览</span>
+            <span className="hidden sm:inline">静态预览：使用本地演示对话，未连接服务端；发送消息只会得到本地示例回复。</span>
+          </span>
+          <span className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={resetPreviewConversation}
+              className="ui-interactive ui-focus-ring -mx-1 inline-flex min-h-11 items-center rounded-sm px-1 py-1.5 underline underline-offset-2 hover:text-foreground md:-my-1.5 md:min-h-8"
+            >
+              重置演示对话
+            </button>
+            <button
+              type="button"
+              onClick={exitPreview}
+              className="ui-interactive ui-focus-ring -mx-1 inline-flex min-h-11 items-center rounded-sm px-1 py-1.5 underline underline-offset-2 hover:text-foreground md:-my-1.5 md:min-h-8"
+            >
+              退出预览
+            </button>
+          </span>
+        </div>
+      )}
+      <main className="flex flex-1 overflow-hidden" id="chat-main">
         <SessionSidebar
           className="hidden lg:flex"
           sessions={sessions}
@@ -1270,7 +1470,7 @@ export default function AgentChatPage() {
                     <Bot className="h-8 w-8" />
                   </div>
                   <p className="text-sm">开始一段对话</p>
-                  <p className="mt-1 text-xs text-muted-foreground/70">输入消息，让智能体为你处理事务与信息查询</p>
+                  <p className="mt-1 text-xs text-muted-foreground">输入消息，让智能体为你处理事务与信息查询</p>
                 </div>
               )}
 
@@ -1294,6 +1494,7 @@ export default function AgentChatPage() {
                     .map(message => (
                       <div key={message.id} className="mb-4 flex justify-end animate-message-in">
                         <div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-primary-foreground shadow-soft sm:max-w-[80%]">
+                          <UserMessageExperts experts={message.experts} />
                           <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
                           {message.isStreaming && (
                             <span className="ml-1 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-primary-foreground/70 align-middle" />
@@ -1313,20 +1514,41 @@ export default function AgentChatPage() {
 
                   {turn.messages
                     .filter(m => m.type === 'assistant')
-                    .map(message => (
-                      <div key={message.id} className="mb-5 animate-message-in">
-                        <div className="mb-1.5 flex items-center gap-2 text-muted-foreground">
-                          <span className="flex h-5 w-5 items-center justify-center rounded-md bg-primary/10 text-primary">
-                            <Bot className="h-3 w-3" />
-                          </span>
-                          <span className="text-[11px] font-medium">智能体</span>
+                    .map((message, index, list) => {
+                      // 只有该轮最后一条、且已结束的回答才挂引用，流式过程中不展示未定稿的资料
+                      const isFinalAnswer = index === list.length - 1 && !message.isStreaming;
+                      // 预览模式用固定演示引用；真实链路只消费本轮 agent.citation 聚合结果。
+                      const citations =
+                        isFinalAnswer && devPreview
+                          ? citationsForTurn(turn.turnId, message.content, true)
+                          : isFinalAnswer
+                            ? citationsByTurn[turn.turnId] ?? EMPTY_CITATIONS
+                            : EMPTY_CITATIONS;
+
+                      return (
+                        <div key={message.id} className="mb-5 animate-message-in">
+                          <div className="mb-1.5 flex items-center gap-2 text-muted-foreground">
+                            <span className="flex h-5 w-5 items-center justify-center rounded-md bg-primary/10 text-primary">
+                              <Bot className="h-3 w-3" />
+                            </span>
+                            <span className="text-[11px] font-medium">智能体</span>
+                          </div>
+                          <Markdown
+                            content={message.isStreaming ? `${message.content}▍` : message.content}
+                            className="break-words"
+                            citations={citations}
+                            onCitationClick={openCitation}
+                          />
+                          {isFinalAnswer && citations.length > 0 && (
+                            <CitationList
+                              citations={citations}
+                              annotated={hasCitationAnnotation(message.content, citations)}
+                              onOpen={openCitation}
+                            />
+                          )}
                         </div>
-                        <Markdown
-                          content={message.isStreaming ? `${message.content}▍` : message.content}
-                          className="break-words"
-                        />
-                      </div>
-                    ))}
+                      );
+                    })}
 
                   <TurnArtifacts
                     artifacts={turnArtifacts.get(turn.turnId) ?? []}
@@ -1339,6 +1561,7 @@ export default function AgentChatPage() {
               {pendingUserMessages.map(pending => (
                 <div key={pending.id} className="mb-4 flex justify-end animate-message-in">
                   <div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary/80 px-4 py-2.5 text-primary-foreground opacity-70 shadow-soft sm:max-w-[80%]">
+                    <UserMessageExperts experts={pending.experts} />
                     <p className="whitespace-pre-wrap text-sm leading-relaxed">{pending.content}</p>
                   </div>
                 </div>
@@ -1367,41 +1590,25 @@ export default function AgentChatPage() {
           </ScrollArea>
           <div className="border-t border-border/60 bg-background/80 px-4 pb-4 pt-3 backdrop-blur">
             <div className="mx-auto w-full max-w-3xl">
-              <div className="rounded-2xl border border-border bg-card p-2 shadow-float">
-                <div className="flex items-end gap-2">
-                  <Textarea
-                    ref={textareaRef}
-                    value={inputValue}
-                    onChange={e => setInputValue(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="输入消息..."
-                    rows={1}
-                    className="min-h-[44px] max-h-[160px] flex-1 resize-none border-0 bg-transparent px-2 py-2.5 text-sm shadow-none focus-visible:ring-0"
-                  />
-                  {sseRunning ? (
-                    <Button variant="destructive" className="h-11 shrink-0 px-4" onClick={stopGeneration}>
-                      <Square className="h-4 w-4" />
-                      <span className="ml-1.5">停止</span>
-                    </Button>
-                  ) : (
-                    <Button className="h-11 w-11 shrink-0" onClick={sendMessage} disabled={!inputValue.trim()} title="发送" aria-label="发送">
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-                <div className="flex items-center justify-between gap-4 px-1 pt-1.5 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <Switch id="deep-thinking" checked={deepThinking} onCheckedChange={setDeepThinking} />
-                    <Label htmlFor="deep-thinking" className="cursor-pointer text-xs">深度思考</Label>
-                  </div>
-                  <span className="hidden sm:block">Enter 发送 · Shift+Enter 换行</span>
-                </div>
-              </div>
+              <MessageComposer
+                value={inputValue}
+                onChange={setInputValue}
+                onSend={sendMessage}
+                onStop={stopGeneration}
+                running={sseRunning}
+                deepThinking={deepThinking}
+                onDeepThinkingChange={setDeepThinking}
+                experts={expertSelection.experts}
+                selectedExpertIds={expertSelection.selectedIds}
+                onToggleExpert={expertSelection.toggle}
+                onRemoveExpert={expertSelection.remove}
+                onClearExperts={expertSelection.clear}
+              />
             </div>
           </div>
         </div>
 
-      </div>
+      </main>
 
       <Sheet open={showToc} onOpenChange={setShowToc}>
         <SheetContent side="left" className="w-60 p-0">
@@ -1423,7 +1630,18 @@ export default function AgentChatPage() {
         open={skillPanelOpen}
         onOpenChange={setSkillPanelOpen}
         userId={identity.userId || 'anonymous'}
-        isAdmin={currentUser?.roles.includes('ADMIN') ?? false}
+        isAdmin={activeUser?.roles.includes('ADMIN') ?? false}
+      />
+
+      <CitationSheet
+        citationId={citationId}
+        open={citationId !== null}
+        onOpenChange={open => {
+          if (!open) closeCitation();
+        }}
+        isAdmin={activeUser?.roles.includes('ADMIN') ?? false}
+        preview={devPreview}
+        onRestoreFocus={restoreCitationFocus}
       />
 
       {notifications.length > 0 && (

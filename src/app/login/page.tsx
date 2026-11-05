@@ -173,7 +173,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <div className="relative text-xs text-muted-foreground/60">© 2026 aoteman</div>
+        <div className="relative text-xs text-muted-foreground">© 2026 aoteman</div>
       </aside>
 
       {/* 右：登录表单 */}
@@ -245,7 +245,7 @@ export default function LoginPage() {
                     tabIndex={-1}
                     onClick={() => setShowPassword((value) => !value)}
                     aria-label={showPassword ? "隐藏密码" : "显示密码"}
-                    className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center ui-interactive ui-focus-ring rounded-md text-muted-foreground hover:text-foreground"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -278,7 +278,7 @@ export default function LoginPage() {
 
             {demoAccounts.length > 0 && (
               <Collapsible className="mt-6 overflow-hidden rounded-lg border border-border/60 bg-card/60">
-                <CollapsibleTrigger className="group flex w-full items-center justify-between px-3.5 py-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent/50">
+                <CollapsibleTrigger className="ui-interactive ui-focus-ring group flex w-full items-center justify-between px-3.5 py-2.5 text-xs text-muted-foreground hover:bg-accent/50">
                   <span className="flex items-center gap-1.5">
                     <ShieldCheck className="h-3.5 w-3.5" />
                     演示账号（点击填入）
@@ -292,13 +292,13 @@ export default function LoginPage() {
                         key={account.username}
                         type="button"
                         onClick={() => fillDemo(account)}
-                        className="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="flex w-full items-center justify-between ui-interactive ui-focus-ring rounded-md px-2.5 py-1.5 text-left text-xs hover:bg-accent"
                       >
                         <span className="flex items-center gap-1.5 font-mono text-foreground/90">
                           <UserIcon className="h-3 w-3 text-muted-foreground" />
                           {account.username}
                         </span>
-                        <span className="font-mono text-muted-foreground/60">{account.password}</span>
+                        <span className="font-mono text-muted-foreground">{account.password}</span>
                       </button>
                     ))}
                   </div>
@@ -306,7 +306,7 @@ export default function LoginPage() {
               </Collapsible>
             )}
 
-            <p className="mt-6 text-center text-[11px] leading-relaxed text-muted-foreground/60">
+            <p className="mt-6 text-center text-[11px] leading-relaxed text-muted-foreground">
               登录即表示你同意遵守平台使用规范
             </p>
           </div>

@@ -1,10 +1,16 @@
 'use client';
 
+import { useMemo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { cn } from '@/lib/utils';
+import type { Pluggable } from 'unified';
 
-const components: Components = {
+import { CitationRef } from '@/components/chat/CitationRef';
+import { remarkCitations } from '@/lib/remark-citations';
+import { cn } from '@/lib/utils';
+import type { Citation } from '@/types/citation';
+
+const baseComponents: Components = {
   h1: ({ children }) => (
     <h1 className="mb-3 mt-5 text-lg font-semibold tracking-tight first:mt-0">{children}</h1>
   ),
@@ -60,10 +66,59 @@ const components: Components = {
   td: ({ children }) => <td className="border border-border px-2 py-1 align-top">{children}</td>,
 };
 
-export function Markdown({ content, className }: { content: string; className?: string }) {
+export function Markdown({
+  content,
+  className,
+  citations,
+  onCitationClick,
+}: {
+  content: string;
+  className?: string;
+  /** 本轮 agent.citation 快照。只有这里存在的 [K*] 才会渲染为可点击徽标。 */
+  citations?: Citation[];
+  onCitationClick?: (citation: Citation) => void;
+}) {
+  const citationMap = useMemo(() => {
+    const map = new Map<string, Citation>();
+    (citations ?? []).forEach((citation) => map.set(citation.ref.toUpperCase(), citation));
+    return map;
+  }, [citations]);
+
+  const remarkPlugins = useMemo<Pluggable[]>(() => {
+    if (citationMap.size === 0) return [remarkGfm];
+    return [remarkGfm, [remarkCitations, { refs: Array.from(citationMap.keys()) }] as Pluggable];
+  }, [citationMap]);
+
+  const components = useMemo<Components>(
+    () => ({
+      ...baseComponents,
+      a: ({ href, children }) => {
+        const match = href?.match(/^#citation-(k\d+)$/i);
+        if (match) {
+          const citation = citationMap.get(match[1].toUpperCase());
+          if (citation) {
+            return <CitationRef citation={citation} onActivate={onCitationClick} />;
+          }
+          return <span>{children}</span>;
+        }
+        return (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-primary underline underline-offset-2 hover:text-primary/80"
+          >
+            {children}
+          </a>
+        );
+      },
+    }),
+    [citationMap, onCitationClick],
+  );
+
   return (
     <div className={cn('text-sm leading-7 text-foreground', className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
         {content}
       </ReactMarkdown>
     </div>
