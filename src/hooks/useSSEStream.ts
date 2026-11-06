@@ -11,10 +11,14 @@ interface SSEStreamCallbacks {
   onMessageUpdate?: (id: string, content: string) => void;
   /** 流式结束后用权威文本替换整段内容 */
   onMessageFinalize?: (id: string, content: string, turnId?: number) => void;
+  /** 预览快照恢复的完整正文（不是增量）；只用于尚未落盘的流式气泡 */
+  onMessageSnapshot?: (id: string, content: string, turnId?: number, startedAt?: number) => void;
   onThinking?: (thinking: Thinking) => void;
   onThinkingUpdate?: (id: string, content: string) => void;
   /** 思考段落盘：用权威文本替换流式思考段，并带上落盘 seq 参与时序排序 */
   onThinkingFinalize?: (id: string, content: string, seq?: number, turnId?: number) => void;
+  /** 预览快照恢复的完整思考文本（不是增量） */
+  onThinkingSnapshot?: (id: string, content: string, turnId?: number, startedAt?: number) => void;
   /** 中间过程叙述：模型在工具调用前输出的过渡说明 */
   onNarration?: (narration: Narration) => void;
   /** 移除一条（尚未落盘的）助理气泡，例如流式内容被判定为中间叙述时 */
@@ -22,7 +26,13 @@ interface SSEStreamCallbacks {
   /** 一轮内每个 knowledge_search 产出的引用快照（同一 toolCallId 后端只发一次）。 */
   onCitation?: (citations: Citation[], toolCallId: string, turnId: number) => void;
   onToolUse?: (toolUse: ToolUse) => void;
+  /** 挂起工具：等待用户确认 / 作答，必须复用原卡片 */
+  onToolSuspended?: (toolUse: ToolUse) => void;
   onToolResult?: (toolResult: ToolUse) => void;
+  /** 用户提交的工具结果（如追问答案）即该工具卡的终态，前端据此本地收尾 */
+  onUserToolResult?: (toolCallId: string, toolName: string) => void;
+  /** 用户对挂起工具的确认结果（历史回放时确认卡唯一的终态信号） */
+  onUserToolConfirmation?: (toolCallId: string, allow: boolean) => void;
   onSkillUse?: (skillUse: ToolUse) => void;
   onSkillResult?: (skillResult: ToolUse) => void;
   onSkillLoaded?: (name: string) => void;
@@ -92,6 +102,7 @@ function parseExpertSnapshot(payload: Record<string, unknown>): ExpertRef[] | un
 const STREAM_EVENT_TYPES: string[] = [
   'event_start',
   'event_delta',
+  'preview.snapshot',
   'agent.event',
   'agent.message',
   'agent.citation',
@@ -99,7 +110,10 @@ const STREAM_EVENT_TYPES: string[] = [
   'agent.narration',
   'user.message',
   'agent.tool_use',
+  'agent.tool_suspended',
   'agent.tool_result',
+  'user.tool_result',
+  'user.tool_confirmation',
   'agent.skill_use',
   'agent.skill_result',
   'agent.skill_loaded',
@@ -137,10 +151,18 @@ export function useSSEStream(
   const sessionIdRef = useRef(sessionId);
   const userIdRef = useRef(userId);
 
-  /** 当前轮次：以 user.message 回显为起点自增 */
+  /**
+   * 每个会话独立的流式状态：lastSeq 是重连 / 切回时的 after 游标，
+   * turnId 是该会话的轮次计数器。
+   *
+   * 不能用全局单例：切换会话若重置为 0 会触发 after=0 全量重放，
+   * 也会把 A 会话的轮次号带到 B 会话。
+   */
+  const streamStateRef = useRef<Map<string, { lastSeq: number; turnId: number; previewSeqByEventId: Map<string, number> }>>(new Map());
+  /** 连接代际：connect / disconnect 自增，旧连接的晚到回调一律丢弃 */
+  const generationRef = useRef<number>(0);
+  /** 当前会话 turnId 的镜像（handleEvent 高频读取，避免每次查 Map） */
   const turnIdRef = useRef<number>(0);
-  /** 已收到的最大 seq，重连时作为 after 游标，避免历史重放 */
-  const lastSeqRef = useRef<number>(0);
   /** 已渲染过的事件 id，避免重连回放导致的重复 */
   const seenEventIdsRef = useRef<Set<string>>(new Set());
   /** 正在流式输出中的 assistant 消息 id */
@@ -149,8 +171,42 @@ export function useSSEStream(
   const streamingThinkingIdsRef = useRef<Set<string>>(new Set());
   /** 已判定为「中间叙述」的事件 id：这些 id 不应再渲染成助理气泡 */
   const narrationIdsRef = useRef<Set<string>>(new Set());
-  /** 模型侧的 toolCallId -> 前端工具卡片 id(evt_xxx) */
-  const toolCallIdToCardIdRef = useRef<Map<string, string>>(new Map());
+  /** 会话隔离：模型侧 toolCallId -> 前端工具卡片 id(evt_xxx) */
+  const toolCallIdToCardIdRef = useRef<Map<string, Map<string, string>>>(new Map());
+
+  const ensureStreamState = useCallback((sessionId: string) => {
+    const existing = streamStateRef.current.get(sessionId);
+    if (existing) return existing;
+    const created = { lastSeq: 0, turnId: 0, previewSeqByEventId: new Map<string, number>() };
+    streamStateRef.current.set(sessionId, created);
+    return created;
+  }, []);
+
+  /**
+   * 预览帧按 eventId + previewSeq 防乱序。
+   * 快照与 event_start / event_delta 共用同一个序号空间；返回 false 表示该帧已过期。
+   */
+  const acceptPreviewSeq = useCallback(
+    (eventId: string, previewSeq: unknown) => {
+      if (!eventId) return true;
+      if (typeof previewSeq !== 'number' || !Number.isFinite(previewSeq)) return true;
+      const state = ensureStreamState(sessionIdRef.current);
+      const last = state.previewSeqByEventId.get(eventId);
+      if (last !== undefined && previewSeq <= last) return false;
+      state.previewSeqByEventId.set(eventId, previewSeq);
+      return true;
+    },
+    [ensureStreamState]
+  );
+
+  /** 当前会话的 toolCallId -> 卡片 id 映射（toolCallId 只在会话内唯一） */
+  const getToolCardMap = useCallback((sessionId: string) => {
+    const existing = toolCallIdToCardIdRef.current.get(sessionId);
+    if (existing) return existing;
+    const created = new Map<string, string>();
+    toolCallIdToCardIdRef.current.set(sessionId, created);
+    return created;
+  }, []);
 
   useEffect(() => {
     callbacksRef.current = callbacks;
@@ -228,10 +284,57 @@ export function useSSEStream(
 
     switch (data.type) {
       /* ---------------- 流式预览 ---------------- */
+      case 'preview.snapshot': {
+        const snapshotEvents = Array.isArray(payload.events) ? payload.events : [];
+        for (const raw of snapshotEvents) {
+          if (!raw || typeof raw !== 'object') continue;
+          const item = raw as Record<string, unknown>;
+          const eventId = String(item.eventId ?? '');
+          const targetType = String(item.type ?? '');
+          const text = String(item.text ?? '');
+          if (!eventId || !targetType) continue;
+          const startedAt = typeof item.startedAt === 'number' ? item.startedAt : undefined;
+
+          if (targetType === 'agent.thinking') {
+            // 已落盘事件由历史补齐，快照不应再覆盖（需求 B2）。
+            if (seenEventIdsRef.current.has(eventId)) continue;
+            if (!acceptPreviewSeq(eventId, item.previewSeq)) continue;
+            streamingThinkingIdsRef.current.add(eventId);
+            callbacksRef.current.onThinkingSnapshot?.(eventId, text, turnId, startedAt);
+          } else if (targetType === 'agent.message') {
+            if (seenEventIdsRef.current.has(eventId)) continue;
+            if (narrationIdsRef.current.has(eventId)) continue;
+            if (!acceptPreviewSeq(eventId, item.previewSeq)) continue;
+            streamingMessageIdsRef.current.add(eventId);
+            callbacksRef.current.onMessageSnapshot?.(eventId, text, turnId, startedAt);
+          } else if (targetType === 'agent.tool_use' || targetType === 'agent.skill_use') {
+            // 工具快照的 eventId 就是普通 tool_use 的卡片 id；已落盘则跳过。
+            if (seenEventIdsRef.current.has('use:' + eventId)) continue;
+            const toolUse: ToolUse = {
+              id: eventId,
+              name: String(item.toolName ?? '').trim() || '准备中…',
+              input: formatToolInput(item.inputJson ?? item.text),
+              type: targetType === 'agent.skill_use' ? 'skill' : 'tool',
+              status: 'pending',
+              turnId,
+              startedAt: startedAt ?? Date.now(),
+            };
+            if (targetType === 'agent.skill_use') {
+              callbacksRef.current.onSkillUse?.(toolUse);
+            } else {
+              callbacksRef.current.onToolUse?.(toolUse);
+            }
+          }
+        }
+        addTraceEntry('preview.snapshot', '恢复进行中的预览', payload);
+        break;
+      }
+
       case 'event_start': {
         const target = String(payload.type || '');
         const id = String(payload.event_id || '');
         if (!id) break;
+        if (!acceptPreviewSeq(id, payload.previewSeq)) break;
         if (target === 'agent.message') {
           // 该 id 已被判定为中间叙述：不要再为它新建气泡。
           if (narrationIdsRef.current.has(id)) break;
@@ -278,6 +381,7 @@ export function useSSEStream(
         const id = String(payload.event_id || '');
         const delta = String(payload.delta || '');
         if (!id || !delta) break;
+        if (!acceptPreviewSeq(id, payload.previewSeq)) break;
         if (target === 'agent.message') {
           // 该 id 已被判定为中间叙述：增量不再写入气泡。
           if (narrationIdsRef.current.has(id)) break;
@@ -300,6 +404,7 @@ export function useSSEStream(
         const text = String(payload.text || '');
         if (!text) break;
         turnIdRef.current += 1;
+        ensureStreamState(sessionIdRef.current).turnId = turnIdRef.current;
         const experts = parseExpertSnapshot(payload);
         callbacksRef.current.onMessage?.({
           id: eventId || generateMessageId(),
@@ -372,7 +477,9 @@ export function useSSEStream(
           content: text,
           turnId,
           seq: toPersistedSeq(data.seq),
-          timestamp: Date.now(),
+          // 用落盘时间而不是接收时间：历史回放时 Date.now() 会把「过程耗时」
+          // 算成「本轮结束到现在」，刷新越晚显示越大。
+          timestamp: data.createdAt ?? Date.now(),
         });
         addTraceEntry('agent.narration', text.slice(0, 80), payload);
         break;
@@ -403,12 +510,11 @@ export function useSSEStream(
         const toolCallId = String(payload.toolCallId ?? payload.id ?? '');
         // 同一个模型 toolCallId 可能被后端落盘两次（挂起工具单独再写一条），
         // 这里统一映射到第一张卡片，避免出现两张同名工具卡片。
-        const existingCardId = toolCallId
-          ? toolCallIdToCardIdRef.current.get(toolCallId)
-          : undefined;
+        const toolCardMap = getToolCardMap(sessionIdRef.current);
+        const existingCardId = toolCallId ? toolCardMap.get(toolCallId) : undefined;
         const cardId = existingCardId || id || generateMessageId();
         if (toolCallId) {
-          toolCallIdToCardIdRef.current.set(toolCallId, cardId);
+          toolCardMap.set(toolCallId, cardId);
         }
         if (!markSeen('use:' + (id || cardId))) break;
         const toolUse: ToolUse = {
@@ -439,7 +545,7 @@ export function useSSEStream(
         if (!markSeen('result:' + resultEventId)) break;
         const toolCallId = String(payload.tool_use_id ?? payload.toolCallId ?? payload.id ?? '');
         const cardId =
-          toolCallIdToCardIdRef.current.get(toolCallId) || resultEventId || toolCallId;
+          getToolCardMap(sessionIdRef.current).get(toolCallId) || resultEventId || toolCallId;
         const stateText = String(payload.state || payload.status || '').toLowerCase();
         const failed = stateText === 'error' || stateText === 'failed';
         // 外部工具（如 ask_followup_questions）挂起时会先返回 state=RUNNING +
@@ -456,6 +562,8 @@ export function useSSEStream(
         const isAwaitingExternal = rawOutput.trim() === '[Awaiting external execution]';
         const toolResult: ToolUse = {
           id: cardId,
+          // 保留模型侧 toolCallId：页面据此把历史上已处理的确认卡收起
+          toolCallId: toolCallId || undefined,
           name: String(payload.name || payload.toolName || 'Tool'),
           input: '',
           output: isAwaitingExternal ? '' : rawOutput,
@@ -472,6 +580,50 @@ export function useSSEStream(
           callbacksRef.current.onToolResult?.(toolResult);
         }
         addTraceEntry(data.type, toolResult.name, payload);
+        break;
+      }
+
+      case 'user.tool_result': {
+        // 追问等「由用户代执行」的工具，结果落盘后就是终态，服务端不会再补 agent.tool_result。
+        // 以这条事件作为唯一权威收尾信号：实时收流与 SSE 回放都能把卡片从 suspended 收尾。
+        const toolCallId = String(payload.tool_use_id ?? payload.toolCallId ?? '');
+        if (!toolCallId) break;
+        const toolName = String(payload.name || payload.toolName || '');
+        callbacksRef.current.onUserToolResult?.(toolCallId, toolName);
+        addTraceEntry('user.tool_result', toolName || '工具结果', payload);
+        break;
+      }
+
+      case 'user.tool_confirmation': {
+        // 确认动作本身就是确认卡的终态：拒绝时服务端可能不再补 agent.tool_result，
+        // 只靠结果事件会把历史回放里的确认卡永久留在「等待确认」。
+        const toolCallId = String(payload.tool_use_id ?? payload.toolCallId ?? '');
+        if (!toolCallId) break;
+        callbacksRef.current.onUserToolConfirmation?.(toolCallId, payload.allow === true);
+        addTraceEntry('user.tool_confirmation', payload.allow === true ? '已允许工具执行' : '已拒绝工具执行', payload);
+        break;
+      }
+
+      case 'agent.tool_suspended': {
+        // 外层 data.id 是挂起事件 id，不能用来找卡片；必须用模型侧 toolCallId。
+        const toolCallId = String(payload.toolCallId ?? payload.id ?? '');
+        if (!toolCallId) break;
+        if (!markSeen(String(data.id || 'sus:' + toolCallId))) break;
+        const toolCardMap = getToolCardMap(sessionIdRef.current);
+        const cardId = toolCardMap.get(toolCallId) || 'sus_' + toolCallId;
+        toolCardMap.set(toolCallId, cardId);
+        const toolUse: ToolUse = {
+          id: cardId,
+          toolCallId,
+          name: String(payload.name || payload.toolName || 'Unknown'),
+          input: formatToolInput(payload.input),
+          status: 'suspended',
+          type: 'tool',
+          turnId,
+          startedAt: data.createdAt ?? Date.now(),
+        };
+        callbacksRef.current.onToolSuspended?.(toolUse);
+        addTraceEntry('agent.tool_suspended', toolUse.name, payload);
         break;
       }
 
@@ -504,6 +656,8 @@ export function useSSEStream(
       }
 
       case 'session.error': {
+        // 超时 / 工具调用上限等错误后必须让输入区恢复可用。
+        setState((prev) => (prev.isRunning ? { ...prev, isRunning: false } : prev));
         const message = String(payload.message || '未知错误');
         callbacksRef.current.onError?.(message);
         addTraceEntry('session.error', message, payload);
@@ -526,48 +680,64 @@ export function useSSEStream(
         break;
       }
     }
-  }, [addTraceEntry, generateMessageId, handleRequiresAction, markSeen]);
+  }, [acceptPreviewSeq, addTraceEntry, ensureStreamState, generateMessageId, getToolCardMap, handleRequiresAction, markSeen]);
 
   const connect = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
 
+    const sessionId = sessionIdRef.current;
+    const generation = ++generationRef.current;
+    const streamState = ensureStreamState(sessionId);
+    // 切回已打开过的会话时从该会话自己的游标续传，避免 after=0 全量重放。
     const url =
       '/api/sessions/' +
-      encodeURIComponent(sessionIdRef.current) +
+      encodeURIComponent(sessionId) +
       '/events/stream?userId=' +
       encodeURIComponent(userIdRef.current) +
       '&after=' +
-      lastSeqRef.current +
+      streamState.lastSeq +
       '&event_deltas=' +
       encodeURIComponent(PREVIEW_TYPES.join(','));
 
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
 
+    /** 只有「当前代际 + 当前会话」的回调才允许写状态 */
+    const isCurrent = () =>
+      generation === generationRef.current && sessionId === sessionIdRef.current;
+
     eventSource.onopen = () => {
+      if (!isCurrent()) return;
       setState((prev) => ({ ...prev, isConnected: true }));
       addTraceEntry('connection', 'SSE 连接已建立');
     };
 
     eventSource.onerror = (error) => {
+      if (!isCurrent()) {
+        eventSource.close();
+        return;
+      }
       console.error('SSE Error:', error);
       setState((prev) => ({ ...prev, isConnected: false }));
       addTraceEntry('error', 'SSE 连接错误，3 秒后重连', null);
       eventSource.close();
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = setTimeout(() => {
+        if (generation !== generationRef.current) return;
         connect();
       }, 3000);
     };
 
     STREAM_EVENT_TYPES.forEach((name) => {
       eventSource.addEventListener(name, (event) => {
+        // 旧连接 / 旧会话的晚到事件：直接丢弃，避免串台。
+        if (!isCurrent()) return;
         try {
           const data = JSON.parse((event as MessageEvent).data) as SSEEvent;
-          if (typeof data.seq === 'number' && data.seq > lastSeqRef.current) {
-            lastSeqRef.current = data.seq;
+          if (typeof data.seq === 'number' && data.seq >= 0 && data.seq > streamState.lastSeq) {
+            streamState.lastSeq = data.seq;
           }
           handleEvent(data);
         } catch (e) {
@@ -575,7 +745,7 @@ export function useSSEStream(
         }
       });
     });
-  }, [addTraceEntry, handleEvent]);
+  }, [addTraceEntry, ensureStreamState, handleEvent]);
 
   /**
    * 用户提交工具结果 / 确认后开启新一轮。
@@ -586,10 +756,13 @@ export function useSSEStream(
    */
   const beginUserTurn = useCallback(() => {
     turnIdRef.current += 1;
+    ensureStreamState(sessionIdRef.current).turnId = turnIdRef.current;
     return turnIdRef.current;
-  }, []);
+  }, [ensureStreamState]);
 
   const disconnect = useCallback(() => {
+    // 先作废旧连接代际，阻止关闭前已入队的回调继续写状态。
+    generationRef.current += 1;
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
@@ -602,23 +775,19 @@ export function useSSEStream(
     addTraceEntry('connection', 'SSE 连接已断开');
   }, [addTraceEntry]);
 
-  // 新会话：重置游标与去重集合后再连接
+  // 切换会话：取该会话自己的游标与 turnId 后连接，不再重置为 0 全量重放。
+  // 去重集合 / 流式 id / toolCallId 映射都是跨会话安全的（id 全局唯一或已按会话分桶），
+  // 不能在这里清空，否则切回时会与已恢复的 UI 快照冲突。
   useEffect(() => {
     if (!sessionId || !userId) {
       return;
     }
-    turnIdRef.current = 0;
-    lastSeqRef.current = 0;
-    seenEventIdsRef.current = new Set();
-    streamingMessageIdsRef.current = new Set();
-    streamingThinkingIdsRef.current = new Set();
-    narrationIdsRef.current = new Set();
-    toolCallIdToCardIdRef.current = new Map();
+    turnIdRef.current = ensureStreamState(sessionId).turnId;
     connect();
     return () => {
       disconnect();
     };
-  }, [sessionId, userId, connect, disconnect]);
+  }, [sessionId, userId, connect, disconnect, ensureStreamState]);
 
   return {
     ...state,

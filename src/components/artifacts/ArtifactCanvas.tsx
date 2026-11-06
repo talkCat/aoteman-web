@@ -12,6 +12,7 @@ import {
 import { ArtifactTabs } from '@/components/artifacts/ArtifactTabs';
 import { MarkdownArtifactView } from '@/components/artifacts/MarkdownArtifactView';
 import { PptxArtifactView } from '@/components/artifacts/PptxArtifactView';
+import { TextArtifactView } from '@/components/artifacts/TextArtifactView';
 import { artifactFileName, artifactKind, type ArtifactItem } from '@/lib/artifacts';
 import { cn } from '@/lib/utils';
 
@@ -51,7 +52,7 @@ export function ArtifactCanvas({
   onShowConversation?: () => void;
   className?: string;
 }) {
-  const kind = artifactKind(artifact.workspacePath);
+  const kind = artifactKind(artifact.workspacePath, artifact.mimeType);
 
   const Icon = kind === 'pptx' ? Presentation : FileText;
 
@@ -121,6 +122,9 @@ export function ArtifactCanvas({
         )}
         {kind === 'pptx' && (
           <PptxArtifactView artifact={artifact} userId={userId} sessionId={sessionId} />
+        )}
+        {kind === 'text' && (
+          <TextArtifactView artifact={artifact} userId={userId} sessionId={sessionId} />
         )}
         {kind === 'other' && (
           <div className="flex flex-col items-center gap-2 px-6 py-12 text-center text-sm text-fg-3">

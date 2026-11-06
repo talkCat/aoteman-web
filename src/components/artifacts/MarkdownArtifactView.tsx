@@ -299,7 +299,14 @@ export function MarkdownArtifactView({
 }
 
 /** 复制按钮：成功态 1.6s 后自动回落，不额外弹 toast。 */
-export function CopyArtifactButton({ content }: { content: string }) {
+export function CopyArtifactButton({
+  content,
+  title = '复制 Markdown 全文',
+}: {
+  content: string;
+  /** 纯文本 / 其它产物复用时替换按钮提示。 */
+  title?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -320,7 +327,7 @@ export function CopyArtifactButton({ content }: { content: string }) {
           setCopied(false);
         }
       }}
-      title="复制 Markdown 全文"
+      title={title}
       className="ui-interactive ui-focus-ring inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-fg-3 hover:bg-surface-2 hover:text-fg-1 disabled:opacity-40"
     >
       {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}

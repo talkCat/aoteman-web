@@ -10,6 +10,7 @@ export interface Identity {
 export type SSEEventType =
   | 'event_start'
   | 'event_delta'
+  | 'preview.snapshot'
   | 'agent.event'
   | 'agent.message'
   | 'agent.citation'
@@ -17,6 +18,7 @@ export type SSEEventType =
   | 'agent.narration'
   | 'user.message'
   | 'agent.tool_use'
+  | 'agent.tool_suspended'
   | 'agent.tool_result'
   | 'agent.skill_use'
   | 'agent.skill_result'
@@ -92,7 +94,7 @@ export interface ToolUse {
   toolCallId?: string;
   name: string;
   input: string;
-  status?: 'pending' | 'success' | 'error';
+  status?: 'pending' | 'suspended' | 'success' | 'error' | 'cancelled';
   output?: string;
   type: 'tool' | 'skill';
   turnId?: number;
@@ -109,7 +111,7 @@ export interface ToolConfirmation {
   toolCallId: string;
   toolName: string;
   input: Record<string, unknown>;
-  status?: 'pending' | 'allowed' | 'denied';
+  status?: 'pending' | 'allowed' | 'denied' | 'resolved';
   /** 该确认所属轮次，用于在对应轮次内渲染 */
   turnId?: number;
 }

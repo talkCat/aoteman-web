@@ -1,9 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Check, Copy, Download, FileWarning, Presentation } from 'lucide-react';
+import { Check, Copy, Download, ExternalLink } from 'lucide-react';
 
-import { artifactContentUrl, artifactFileName, type ArtifactItem } from '@/lib/artifacts';
+import { PptxPreviewPane } from '@/components/artifacts/PptxPreviewPane';
+import { useArtifactPreview } from '@/hooks/useArtifactPreview';
+import {
+  artifactContentUrl,
+  artifactPreviewUrl,
+  type ArtifactItem,
+} from '@/lib/artifacts';
 import { isDemoArtifact } from '@/lib/artifact-demo';
 
 /** 人类可读体积。 */
@@ -41,20 +47,21 @@ function CopyPathButton({ path }: { path: string }) {
         }
       }}
       title="复制工作区路径"
-      className="ui-interactive ui-focus-ring inline-flex h-9 items-center gap-1.5 rounded-lg bg-surface-2 px-3.5 text-xs font-medium text-fg-2 hover:bg-surface-3"
+      aria-label="复制工作区路径"
+      className="ui-interactive ui-focus-ring inline-flex h-8 w-8 items-center justify-center rounded-md text-fg-3 hover:bg-surface-2 hover:text-fg-1"
     >
       {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-      {copied ? '已复制' : '复制路径'}
     </button>
   );
 }
 
 /**
- * PPTX 产物视图（本期范围：文件信息 + 下载）。
+ * PPTX 产物视图：预览区（PDF / 骨架 / 失败）+ 底部紧凑信息条。
  *
- * 为什么不做页面预览：PPTX 渲染需要服务端先转 PDF/图片，属于另一条链路；
- * 在没有真实转换服务之前，不做缩略图，也不伪造页数与版式（见 P6.0 红线）。
- * 承接位：后端提供 render 接口后，在卡片上方增加缩略图 / 翻页器即可。
+ * 设计依据：doc/design/2026-11-06-PPTX转PDF预览-前端对接方案.md
+ * - 服务端把 PPTX 转成 PDF，前端用 iframe 走浏览器原生查看器（第一版零新增依赖）；
+ * - 任何预览异常都保留下载入口，下载与预览状态解耦；
+ * - 演示产物（?preview=1）不发任何请求，也不伪造 PDF。
  */
 export function PptxArtifactView({
   artifact,
@@ -66,50 +73,70 @@ export function PptxArtifactView({
   sessionId?: string;
 }) {
   const demo = isDemoArtifact(artifact.workspacePath);
-
-  const rows = [
-    { label: '文件名', value: artifactFileName(artifact.workspacePath) },
-    { label: '大小', value: humanSize(artifact.size) },
-    {
-      label: '类型',
-      value:
-        artifact.mimeType ||
-        artifact.contentType ||
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    },
-    { label: '修改时间', value: formatTime(artifact.modifiedAt) },
-    { label: '工作区路径', value: artifact.workspacePath },
-  ];
+  const preview = useArtifactPreview({ userId, sessionId, artifact, enabled: !demo });
+  const canOpenInNewTab = !demo && preview.status === 'ready';
+  const previewSrc = artifactPreviewUrl(
+    userId,
+    sessionId,
+    artifact.workspacePath,
+    preview.version
+  );
 
   return (
-    <div className="px-4 py-8 sm:px-8">
-      <div className="card-elevated mx-auto w-full max-w-[640px] rounded-xl p-6">
-        <div className="flex items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent-wash text-accent-base">
-            <Presentation className="h-5 w-5" aria-hidden="true" />
+    <div className="flex h-full min-h-0 flex-col gap-3 p-3 sm:p-4">
+      <div className="min-h-0 flex-1">
+        <PptxPreviewPane
+          artifact={artifact}
+          userId={userId}
+          sessionId={sessionId}
+          preview={preview}
+          demo={demo}
+        />
+      </div>
+
+      {/* 底部信息条：文件信息降级为辅助，主视觉留给预览区。 */}
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line-1 bg-surface-1 px-3 py-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 text-[11px] text-fg-4">
+          <span className="shrink-0 font-medium text-fg-3">PPTX</span>
+          <span className="shrink-0">{humanSize(artifact.size)}</span>
+          <span className="hidden shrink-0 sm:inline">· {formatTime(artifact.modifiedAt)}</span>
+          <span
+            className="hidden min-w-0 flex-1 truncate font-mono md:block"
+            title={artifact.workspacePath}
+          >
+            {artifact.workspacePath}
           </span>
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-fg-1">
-              {artifactFileName(artifact.workspacePath)}
-            </h2>
-            <p className="mt-0.5 text-[11px] text-fg-3">PowerPoint 演示文稿</p>
-          </div>
         </div>
 
-        <dl className="mt-5 space-y-2.5 border-t border-line-1 pt-4 text-xs">
-          {rows.map(row => (
-            <div key={row.label} className="flex gap-4">
-              <dt className="w-20 shrink-0 text-fg-4">{row.label}</dt>
-              <dd className="min-w-0 flex-1 break-all text-fg-2">{row.value}</dd>
-            </div>
-          ))}
-        </dl>
+        <div className="flex shrink-0 items-center gap-1">
+          <CopyPathButton path={artifact.workspacePath} />
 
-        <div className="mt-6 flex flex-wrap items-center gap-2">
+          {canOpenInNewTab ? (
+            <a
+              href={previewSrc}
+              target="_blank"
+              rel="noreferrer"
+              title="在新标签打开 PDF 预览"
+              className="ui-interactive ui-focus-ring inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-fg-3 hover:bg-surface-2 hover:text-fg-1"
+            >
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">新标签</span>
+            </a>
+          ) : (
+            <span
+              title={demo ? '静态预览不提供真实文件' : '预览就绪后可在新标签打开'}
+              aria-disabled="true"
+              className="inline-flex h-8 cursor-not-allowed items-center gap-1.5 rounded-md px-2 text-xs font-medium text-fg-4 opacity-50"
+            >
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">新标签</span>
+            </span>
+          )}
+
           {demo ? (
             <span
               title="静态预览不提供真实文件下载"
-              className="inline-flex h-9 cursor-not-allowed items-center gap-1.5 rounded-lg bg-primary/50 px-3.5 text-xs font-medium text-primary-foreground opacity-60"
+              className="inline-flex h-8 cursor-not-allowed items-center gap-1.5 rounded-lg bg-primary/50 px-3 text-xs font-medium text-primary-foreground opacity-60"
             >
               <Download className="h-3.5 w-3.5" aria-hidden="true" />
               下载 PPTX
@@ -118,19 +145,14 @@ export function PptxArtifactView({
             <a
               href={artifactContentUrl(userId, sessionId, artifact.workspacePath, true)}
               download
-              className="ui-interactive ui-pressable ui-focus-ring btn-raised inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+              title="下载原始 PPTX"
+              className="ui-interactive ui-pressable ui-focus-ring btn-raised inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
             >
               <Download className="h-3.5 w-3.5" aria-hidden="true" />
               下载 PPTX
             </a>
           )}
-          <CopyPathButton path={artifact.workspacePath} />
         </div>
-
-        <p className="mt-4 flex items-start gap-1.5 text-[11px] leading-relaxed text-fg-4">
-          <FileWarning className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          本期不提供页面级预览，下载后用本地应用打开；文件信息全部来自产物接口，不做推断。
-        </p>
       </div>
     </div>
   );

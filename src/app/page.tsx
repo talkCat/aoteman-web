@@ -44,15 +44,162 @@ import type { ExpertRef } from '@/types/knowledge';
 import { getLastSessionId, setLastSessionId } from '@/lib/session';
 import { TurnArtifacts } from '@/components/TurnArtifacts';
 import { ArtifactCanvas } from '@/components/artifacts/ArtifactCanvas';
+import { WorkspaceArtifactsSheet } from '@/components/artifacts/WorkspaceArtifactsSheet';
 import { fetchArtifacts, isArtifactWrite, matchTurnArtifacts, type ArtifactItem } from '@/lib/artifacts';
 import { cn } from '@/lib/utils';
-import { ChevronDown, Moon, Sun, Bot, User, Wrench, Sparkles, AlertCircle, XCircle, Loader2, Check, Menu, Store, FlaskConical, ArrowLeft, Database, Plug } from 'lucide-react';
+import { ChevronDown, Moon, Sun, Bot, User, Wrench, Sparkles, AlertCircle, XCircle, Loader2, Check, Menu, Store, FlaskConical, ArrowLeft, Database, Plug, FolderOpen } from 'lucide-react';
 
 // 生成随机 ID
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 // 空引用数组必须保持稳定身份：Markdown 用 citations 推导插件，数组每次换新会重建徽标 DOM。
 const EMPTY_CITATIONS: Citation[] = [];
+
+/**
+ * 会话级 UI 快照：切换会话时保存 / 恢复已渲染内容。
+ *
+ * SSE 落库事件虽可用 after=游标 增量补发，但「已渲染」的聚合状态（按轮分组、
+ * 工具卡合并、问卷状态）都在组件里，清空后无法只靠增量还原，因此按会话缓存一份。
+ */
+type SessionUiSnapshot = {
+  messages: Message[];
+  pendingUserMessages: Array<{ id: string; content: string; timestamp: number; experts?: ExpertRef[] }>;
+  thinking: Thinking[];
+  narrations: Narration[];
+  followupAnswers: FollowupAnswer[];
+  toolUses: ToolUse[];
+  toolConfirmations: ToolConfirmation[];
+  followupQuestionnaire: FollowupQuestionnaire | null;
+  citationsByTurn: Record<number, Citation[]>;
+};
+
+function createEmptySessionUiSnapshot(): SessionUiSnapshot {
+  return {
+    messages: [],
+    pendingUserMessages: [],
+    thinking: [],
+    narrations: [],
+    followupAnswers: [],
+    toolUses: [],
+    toolConfirmations: [],
+    followupQuestionnaire: null,
+    citationsByTurn: {},
+  };
+}
+
+/** 提交事件的三态结果：受理 / 幂等重复 / 真失败。 */
+type SubmitEventResult =
+  | { accepted: true }
+  | {
+      accepted: false;
+      duplicateReason: 'DUPLICATE_TOOL_RESULT' | 'DUPLICATE_TOOL_CONFIRMATION';
+    }
+  | { accepted: false; error: string };
+
+/** 工具状态只能单向推进：pending < suspended < success/error，后到的低阶状态不得覆盖高阶状态。 */
+const TOOL_STATUS_RANK: Record<NonNullable<ToolUse['status']>, number> = {
+  pending: 0,
+  suspended: 1,
+  error: 2,
+  success: 2,
+  cancelled: 2,
+};
+
+function toolStatusRank(status?: ToolUse['status']): number {
+  return status ? TOOL_STATUS_RANK[status] ?? 0 : 0;
+}
+
+/** success / error 是终态：只有终态之间才算冲突，pending / suspended 仍可向终态推进 */
+function isTerminalToolStatus(status?: ToolUse['status']): boolean {
+  return status === 'success' || status === 'error' || status === 'cancelled';
+}
+
+/** 占位工具名：真实名称到达后应替换掉这些值 */
+const PLACEHOLDER_TOOL_NAMES = new Set(['', '准备中…', 'Unknown', 'Tool']);
+
+/** 保留已有的真实名称，仅在它还是占位时用后到的名称补齐 */
+function pickToolName(current?: string, incoming?: string): string {
+  const existing = (current ?? '').trim();
+  const next = (incoming ?? '').trim();
+  if (!PLACEHOLDER_TOOL_NAMES.has(existing)) return existing;
+  return next || existing;
+}
+
+/**
+ * 合并重复的 tool_use 帧（服务端对挂起工具会再落一条 pending）。
+ * 终态卡片只允许补空字段，不允许 status / output / finishedAt / startedAt 被回退。
+ */
+function mergeToolUseFrame(existing: ToolUse, incoming: ToolUse): ToolUse {
+  const name = pickToolName(existing.name, incoming.name);
+  // suspended 不能被后到的 pending 打回；success/error 也不能被 suspended 覆盖。
+  if (toolStatusRank(incoming.status) < toolStatusRank(existing.status)) {
+    return {
+      ...existing,
+      name,
+      input: existing.input || incoming.input,
+      toolCallId: existing.toolCallId || incoming.toolCallId,
+    };
+  }
+  // 两个终态（success / error）冲突时保留先到者：后到的多是重连回放，
+  // 不能让已完成的卡片改判为失败，反之亦然。
+  if (
+    isTerminalToolStatus(existing.status) &&
+    isTerminalToolStatus(incoming.status) &&
+    existing.status !== incoming.status
+  ) {
+    return {
+      ...existing,
+      name,
+      input: existing.input || incoming.input,
+      toolCallId: existing.toolCallId || incoming.toolCallId,
+    };
+  }
+  return {
+    ...existing,
+    ...incoming,
+    // 卡片 id / 开始时间以首次出现为准，避免重复帧把时间线顺序打乱
+    id: existing.id,
+    name,
+    input: incoming.input || existing.input || '',
+    toolCallId: existing.toolCallId || incoming.toolCallId,
+    startedAt: existing.startedAt ?? incoming.startedAt,
+    timestamp: existing.timestamp,
+  };
+}
+
+/** 合并工具结果：终态同样不能被 pending 结果覆盖，否则已完成的卡片会重新可提交 */
+function mergeToolResult(existing: ToolUse, incoming: ToolUse): ToolUse {
+  const name = pickToolName(existing.name, incoming.name);
+  if (toolStatusRank(incoming.status) < toolStatusRank(existing.status)) {
+    return {
+      ...existing,
+      name,
+      toolCallId: existing.toolCallId || incoming.toolCallId,
+    };
+  }
+  // 结果帧同样不能被另一个终态改写，保证卡片只收尾一次。
+  if (
+    isTerminalToolStatus(existing.status) &&
+    isTerminalToolStatus(incoming.status) &&
+    existing.status !== incoming.status
+  ) {
+    return {
+      ...existing,
+      name,
+      toolCallId: existing.toolCallId || incoming.toolCallId,
+    };
+  }
+  return {
+    ...existing,
+    status: incoming.status ?? existing.status,
+    output: incoming.output ?? existing.output,
+    finishedAt: incoming.finishedAt ?? existing.finishedAt,
+    name,
+    toolCallId: existing.toolCallId || incoming.toolCallId,
+    startedAt: existing.startedAt ?? incoming.startedAt,
+    timestamp: existing.timestamp,
+  };
+}
 
 // 回答正文里是否至少标注了一个本轮真实存在的引用（决定参考资料区的标题文案）。
 // 只认 [K*] 字面量，避免把编造的 [K9] 当作已标注。
@@ -62,7 +209,7 @@ function hasCitationAnnotation(content: string, citations: Citation[]): boolean 
   return citations.some((citation) => upper.includes(`[${citation.ref.toUpperCase()}]`));
 }
 
-﻿// 工具名称映射：把后端工具标识换成用户能读懂的动作用语
+// 工具名称映射：把后端工具标识换成用户能读懂的动作用语
 const TOOL_NAME_MAP: Record<string, string> = {
   ask_followup_questions: '追问问卷',
   knowledge_search: '知识库检索',
@@ -230,10 +377,20 @@ function ToolCard({ tool }: { tool: ToolUse }) {
     tool.startedAt && tool.finishedAt && tool.finishedAt >= tool.startedAt
       ? tool.finishedAt - tool.startedAt
       : undefined;
-  const statusLabel = tool.status === 'success' ? '已完成' : tool.status === 'error' ? '失败' : '运行中';
+  const isSuspended = tool.status === 'suspended';
+  const statusLabel =
+    tool.status === 'success'
+      ? '已完成'
+      : tool.status === 'error'
+        ? '失败'
+        : tool.status === 'cancelled'
+          ? '已取消'
+          : isSuspended
+            ? '等待确认'
+            : '运行中';
 
   return (
-    <div className="tool-card">
+    <div className={cn('tool-card', isSuspended && 'is-suspended')}>
       <span className={'tool-icon tone-' + digest.capability.tone}>
         <ToolToneIcon tone={digest.capability.tone} />
       </span>
@@ -244,10 +401,12 @@ function ToolCard({ tool }: { tool: ToolUse }) {
             className={cn(
               'tool-state',
               tool.status === 'success' && 'is-done',
-              tool.status === 'error' && 'is-error'
+              tool.status === 'error' && 'is-error',
+              tool.status === 'cancelled' && 'is-cancelled',
+              isSuspended && 'is-suspended'
             )}
           >
-            {tool.status === 'pending' ? (
+            {tool.status === 'pending' || isSuspended ? (
               <i className="tool-dot" aria-hidden="true" />
             ) : (
               <Check className="h-2.5 w-2.5" aria-hidden="true" />
@@ -315,23 +474,31 @@ function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boo
   const [open, setOpen] = useState(false);
   const [manualOverride, setManualOverride] = useState(false);
 
+  const hasPendingTool = steps.some(step => step.kind === 'tool' && step.tool.status === 'pending');
+  // 挂起（等待用户确认 / 作答）也算未结束：此时服务端会下发 idle，
+  // isActive 为 false，但过程卡必须保持活动视觉，避免看起来已经答完。
+  const hasSuspendedTool = steps.some(step => step.kind === 'tool' && step.tool.status === 'suspended');
+  const isLive = isActive || hasSuspendedTool;
+
   useEffect(() => {
-    if (!manualOverride) setOpen(isActive);
-  }, [isActive, manualOverride]);
+    if (!manualOverride) setOpen(isLive);
+  }, [isLive, manualOverride]);
 
   if (steps.length === 0) return null;
 
   const toolCount = steps.filter(step => step.kind === 'tool').length;
-  const hasPendingTool = steps.some(step => step.kind === 'tool' && step.tool.status === 'pending');
 
   // 过程耗时取真实事件时间戳的最小 ~ 最大跨度；拿不到就不显示，不伪造时长
   let durationLabel: string | undefined;
-  if (!isActive) {
+  if (!isLive) {
     const stamps: number[] = [];
     steps.forEach(step => {
       if (step.kind === 'tool') {
+        // 工具步骤只认落盘的服务端时间：卡片上的 timestamp 是前端接收时刻，
+        // 历史回放时等于「现在」，混进来会把耗时算成「本轮结束到现在」。
         if (step.tool.startedAt) stamps.push(step.tool.startedAt);
         if (step.tool.finishedAt) stamps.push(step.tool.finishedAt);
+        return;
       }
       if (step.timestamp) stamps.push(step.timestamp);
     });
@@ -341,10 +508,16 @@ function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boo
     }
   }
 
-  const title = isActive ? (hasPendingTool ? '正在调用工具' : '正在思考') : '已完成思考';
+  const title = hasSuspendedTool
+    ? '等待确认'
+    : isActive
+      ? hasPendingTool
+        ? '正在调用工具'
+        : '正在思考'
+      : '已完成思考';
 
   return (
-    <div className={cn('process-card mb-4', isActive && 'is-active')}>
+    <div className={cn('process-card mb-4', isLive && 'is-active', hasSuspendedTool && 'is-suspended')}>
       <Collapsible
         open={open}
         onOpenChange={next => {
@@ -353,11 +526,17 @@ function ProcessTimeline({ steps, isActive }: { steps: TurnStep[]; isActive: boo
         }}
       >
         <CollapsibleTrigger className="process-head ui-focus-ring group">
-          <span className={cn('process-orb', isActive ? 'is-live' : 'is-done')}>
-            {isActive ? <Sparkles aria-hidden="true" /> : <Check aria-hidden="true" />}
+          <span className={cn('process-orb', isLive ? 'is-live' : 'is-done', hasSuspendedTool && 'is-waiting')}>
+            {hasSuspendedTool ? (
+              <AlertCircle aria-hidden="true" />
+            ) : isActive ? (
+              <Sparkles aria-hidden="true" />
+            ) : (
+              <Check aria-hidden="true" />
+            )}
           </span>
           <span className="process-title">{title}</span>
-          {!isActive && durationLabel && <span className="process-duration">· {durationLabel}</span>}
+          {!isLive && durationLabel && <span className="process-duration">· {durationLabel}</span>}
           {isActive && (
             <span className="process-dots" aria-hidden="true">
               <i />
@@ -588,6 +767,9 @@ export default function AgentChatPage() {
   // 技能广场面板开关
   const [skillPanelOpen, setSkillPanelOpen] = useState(false);
 
+  // 工作区产物面板：不依赖工具调用的产物总入口（PPTX 由脚本生成，无法靠本轮卡片暴露）
+  const [workspaceArtifactsOpen, setWorkspaceArtifactsOpen] = useState(false);
+
   // 本轮产物列表（BFF /api/artifacts → 数据面）；用于推导每轮的 Markdown / PPTX 产物（设计 §15.1）
   const [artifacts, setArtifacts] = useState<ArtifactItem[]>([]);
 
@@ -607,8 +789,38 @@ export default function AgentChatPage() {
   // 待回显的乐观用户消息（用于与 SSE user.message 回显做匹配去重）
   const pendingUserRef = useRef<Array<{ id: string; content: string; experts?: ExpertRef[] }>>([]);
 
-  // 已经渲染/提交过的追问工具 id，避免提交后问卷被同一个工具重复触发
-  const handledFollowupIdsRef = useRef<Set<string>>(new Set());
+  // 已处理过的追问工具 key（模型侧 toolCallId），按会话分桶。
+  // 不随 clearConversation 清空：切回会话后同一次追问不应再次弹出。
+  const handledFollowupKeysRef = useRef<Map<string, Set<string>>>(new Map());
+  const getHandledFollowupKeys = useCallback((sessionId: string) => {
+    const existing = handledFollowupKeysRef.current.get(sessionId);
+    if (existing) return existing;
+    const created = new Set<string>();
+    handledFollowupKeysRef.current.set(sessionId, created);
+    return created;
+  }, []);
+
+  // 追问 / 工具确认提交中的互斥标记：防止连点重复提交同一个工具结果
+  const submittingRef = useRef(false);
+
+  // 会话级 UI 快照：切走时保存、切回时恢复，配合每个会话独立的 SSE 游标增量续传
+  const sessionUiSnapshotsRef = useRef<Map<string, SessionUiSnapshot>>(new Map());
+  const liveUiSnapshotRef = useRef<SessionUiSnapshot>(createEmptySessionUiSnapshot());
+
+  // 每次渲染后把最新 UI 状态写入 ref，切换会话时可直接保存
+  useEffect(() => {
+    liveUiSnapshotRef.current = {
+      messages,
+      pendingUserMessages,
+      thinking,
+      narrations,
+      followupAnswers,
+      toolUses,
+      toolConfirmations,
+      followupQuestionnaire,
+      citationsByTurn,
+    };
+  }, [messages, pendingUserMessages, thinking, narrations, followupAnswers, toolUses, toolConfirmations, followupQuestionnaire, citationsByTurn]);
 
   // 由 useSSEStream 注入：提交工具结果 / 确认后推进轮次，避免新一轮事件并入上一轮
   const beginUserTurnRef = useRef<(() => number) | null>(null);
@@ -654,9 +866,25 @@ export default function AgentChatPage() {
     setFollowupQuestionnaire(null);
     setCitationsByTurn({});
     setError(null);
-    handledFollowupIdsRef.current.clear();
     messageMapRef.current.clear();
     thinkingMapRef.current.clear();
+  }, []);
+
+  // 恢复某个会话已渲染的 UI 快照（切回历史会话时调用）
+  const applySessionSnapshot = useCallback((snapshot: SessionUiSnapshot) => {
+    setMessages(snapshot.messages);
+    setPendingUserMessages(snapshot.pendingUserMessages);
+    pendingUserRef.current = snapshot.pendingUserMessages.map((p) => ({ ...p }));
+    setThinking(snapshot.thinking);
+    setNarrations(snapshot.narrations);
+    setFollowupAnswers(snapshot.followupAnswers);
+    setToolUses(snapshot.toolUses);
+    setToolConfirmations(snapshot.toolConfirmations);
+    setFollowupQuestionnaire(snapshot.followupQuestionnaire);
+    setCitationsByTurn(snapshot.citationsByTurn);
+    messageMapRef.current = new Map(snapshot.messages.map((m) => [m.id, m]));
+    thinkingMapRef.current = new Map(snapshot.thinking.map((t) => [t.id, t]));
+    setError(null);
   }, []);
 
   // 身份初始化：登录后固定用真实 userId；未登录（如 zoer iframe 内嵌）回退 anonymous，保证仍能连上。
@@ -726,21 +954,29 @@ export default function AgentChatPage() {
 
   // 新会话：userId 保持登录身份不变，仅换 sessionId 并清空当前对话
   const resetIdentity = useCallback(() => {
+    // 先保存当前会话快照，切回时可直接恢复
+    if (identity.sessionId) {
+      sessionUiSnapshotsRef.current.set(identity.sessionId, liveUiSnapshotRef.current);
+    }
     clearConversation();
     setIdentity({ userId: identity.userId || 'anonymous', sessionId: generateId() });
     setShowToc(false);
     addNotification('info', '已开始新会话');
-  }, [clearConversation, addNotification, identity.userId]);
+  }, [clearConversation, addNotification, identity.userId, identity.sessionId]);
 
-  // 切换历史会话：先清空本地 turns，再改 sessionId；useSSEStream 会重连并按 after=0 重放历史事件
+  // 切换历史会话：保存当前会话快照，恢复目标会话快照，再改 sessionId。
+  // useSSEStream 会用目标会话自己的 after 游标增量续传，不再 after=0 全量重放。
   const switchSession = useCallback(
     (sessionId: string) => {
       setShowToc(false);
       if (!sessionId || sessionId === identity.sessionId) return;
-      clearConversation();
+      sessionUiSnapshotsRef.current.set(identity.sessionId, liveUiSnapshotRef.current);
+      applySessionSnapshot(
+        sessionUiSnapshotsRef.current.get(sessionId) ?? createEmptySessionUiSnapshot()
+      );
       setIdentity(prev => ({ ...prev, sessionId }));
     },
-    [clearConversation, identity.sessionId]
+    [applySessionSnapshot, identity.sessionId]
   );
 
   // 删除历史会话：成功后按需新建；删除的是当前会话必须离开死会话（resetIdentity 会清空 turns 并换 sessionId）
@@ -748,8 +984,11 @@ export default function AgentChatPage() {
     async (sessionId: string) => {
       const ok = await removeSession(sessionId);
       if (!ok) return;
+      sessionUiSnapshotsRef.current.delete(sessionId);
       if (sessionId === identity.sessionId) {
         resetIdentity();
+        // resetIdentity 会先把当前会话快照写回 Map，已删除的会话不能残留
+        sessionUiSnapshotsRef.current.delete(sessionId);
       } else {
         addNotification('info', '会话已删除');
       }
@@ -768,30 +1007,57 @@ export default function AgentChatPage() {
   );
 
   // 提交事件
-  const submitEvent = useCallback(async (events: Array<{ type: string; payload: Record<string, unknown> }>): Promise<boolean> => {
-    try {
-      const response = await fetch(`/api/sessions/${identity.sessionId}/events`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: identity.userId,
-          events,
-        }),
-      });
+  // 正常受理：HTTP 200 + 事件数组；重复提交（A4 幂等）：HTTP 200 + 单个对象
+  // { accepted:false, reason:'DUPLICATE_TOOL_RESULT' | 'DUPLICATE_TOOL_CONFIRMATION', turnStatus }。
+  // turnStatus 只用于日志，不参与分支判断。
+  const submitEvent = useCallback(
+    async (
+      events: Array<{ type: string; payload: Record<string, unknown> }>,
+    ): Promise<SubmitEventResult> => {
+      try {
+        const response = await fetch(`/api/sessions/${identity.sessionId}/events`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: identity.userId,
+            events,
+          }),
+        });
 
-      if (!response.ok) {
-        throw new Error(`提交失败: ${response.status}`);
+        if (!response.ok) {
+          throw new Error(`提交失败: ${response.status}`);
+        }
+
+        // 解析失败（如 204 空响应）按正常受理处理，避免误伤老契约
+        const body: unknown = await response.json().catch(() => null);
+        if (body !== null && typeof body === 'object' && !Array.isArray(body)) {
+          const record = body as Record<string, unknown>;
+          const reason = String(record.reason ?? '');
+          if (
+            record.accepted === false &&
+            (reason === 'DUPLICATE_TOOL_RESULT' || reason === 'DUPLICATE_TOOL_CONFIRMATION')
+          ) {
+            // 静默忽略：不报错、不重试、不推进轮次、不追加消息
+            return { accepted: false, duplicateReason: reason };
+          }
+          const rejected = `提交被拒绝: ${reason || '未知原因'}`;
+          setError(rejected);
+          addNotification('error', rejected);
+          return { accepted: false, error: rejected };
+        }
+
+        // 事件落库后刷新会话列表：新会话首次发消息才出现，标题 / 最近活跃也会更新
+        refreshSessions();
+        return { accepted: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '提交失败';
+        setError(message);
+        addNotification('error', message);
+        return { accepted: false, error: message };
       }
-      // 事件落库后刷新会话列表：新会话首次发消息才出现，标题 / 最近活跃也会更新
-      refreshSessions();
-      return true;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '提交失败';
-      setError(message);
-      addNotification('error', message);
-      return false;
-    }
-  }, [identity, addNotification, refreshSessions]);
+    },
+    [identity, addNotification, refreshSessions],
+  );
 
   // 发送消息
   const sendMessage = useCallback(async () => {
@@ -856,7 +1122,7 @@ export default function AgentChatPage() {
 
     // 提交事件；用户消息最终由 SSE 回显确定归属轮次
     // 不选专家时也显式传 []，避免后端把「未传」当成其他语义（设计 §10.3）
-    await submitEvent([{
+    const result = await submitEvent([{
       type: 'user.message',
       payload: {
         text,
@@ -864,6 +1130,14 @@ export default function AgentChatPage() {
         expertIds,
       },
     }]);
+
+    // 真失败（网络 / 非幂等拒绝）时回滚乐观消息并把文本还给输入框，
+    // 避免页面留下一条「已发送但没有回复」的假消息。
+    if ('error' in result) {
+      pendingUserRef.current = pendingUserRef.current.filter(item => item.id !== localId);
+      setPendingUserMessages(prev => prev.filter(item => item.id !== localId));
+      setInputValue(prev => (prev.trim() ? prev : text));
+    }
   }, [inputValue, deepThinking, submitEvent, expertSelection.selectedIds, expertSelection.selectedExperts, devPreview, scrollToBottom]);
 
   // 停止生成（中断当前运行）
@@ -883,59 +1157,102 @@ export default function AgentChatPage() {
     }]);
   }, [devPreview, submitEvent, addNotification]);
 
-  // 提交工具确认
-  const submitToolConfirmation = useCallback(async (toolCallId: string, toolName: string, allow: boolean) => {
-    // 更新状态
-    setToolConfirmations(prev =>
-      prev.map(tc =>
-        tc.toolCallId === toolCallId
-          ? { ...tc, status: allow ? 'allowed' : 'denied' }
-          : tc
+  // 已经产出终态的工具调用：历史回放顺序异常（结果先于 requires_action）时也不能再生成确认卡
+  const settledToolCallIdsRef = useRef<Set<string>>(new Set());
+
+  // 用户提交的工具结果（追问答案等）即该工具卡的终态：实时收流与 SSE 回放都走这里收尾
+  const handleUserToolResult = useCallback((toolCallId: string) => {
+    settledToolCallIdsRef.current.add(toolCallId);
+    setToolUses(prev =>
+      prev.map(t =>
+        t.type === 'tool' && (t.toolCallId || t.id) === toolCallId
+          ? { ...t, status: 'success' as const }
+          : t
       )
     );
+  }, []);
 
-    // 添加通知
-    addNotification('info', allow ? `已允许工具调用：${toolName}` : `已拒绝工具调用：${toolName}`);
+  // 用户的确认动作（实时与回放共用）：确认卡到此即为已处理，不再可点击
+  const handleUserToolConfirmation = useCallback((toolCallId: string, allow: boolean) => {
+    settledToolCallIdsRef.current.add(toolCallId);
+    setToolConfirmations(prev =>
+      prev.some(tc => tc.toolCallId === toolCallId && tc.status === 'pending')
+        ? prev.map(tc =>
+            tc.toolCallId === toolCallId && tc.status === 'pending'
+              ? { ...tc, status: allow ? ('allowed' as const) : ('denied' as const) }
+              : tc
+          )
+        : prev
+    );
+    if (!allow) {
+      // 被拒绝的工具不会再执行，服务端也不会补 agent.tool_result；
+      // 这里必须把工具卡收尾，否则刷新后永远停在「运行中」。
+      setToolUses(prev =>
+        prev.map(t =>
+          t.type === 'tool' &&
+          (t.toolCallId || t.id) === toolCallId &&
+          (t.status === 'pending' || t.status === 'suspended')
+            ? { ...t, status: 'cancelled' as const, output: t.output || '用户已拒绝执行' }
+            : t
+        )
+      );
+    }
+  }, []);
 
-    // 工具确认后开启新一轮，后面对齐的工具事件不再并入上一轮
-    const nextTurnId = beginUserTurnRef.current?.();
+  // 提交工具确认
+  const submitToolConfirmation = useCallback(async (toolCallId: string, toolName: string, allow: boolean) => {
+    // 防连点：同一张确认卡只受理一次；已被允许 / 拒绝的不再重复提交
+    const target = toolConfirmations.find(tc => tc.toolCallId === toolCallId);
+    if (submittingRef.current || !target || target.status !== 'pending') return;
+    submittingRef.current = true;
 
-    // 添加用户消息摘要
-    setMessages(prev => [...prev, {
-      id: generateId(),
-      type: 'user',
-      content: allow ? `已允许工具调用：${toolName}` : `已拒绝工具调用：${toolName}`,
-      timestamp: Date.now(),
-      turnId: nextTurnId,
-    }]);
+    const markConfirmation = () => handleUserToolConfirmation(toolCallId, allow);
 
-    // 提交事件
-    await submitEvent([{
-      type: 'user.tool_confirmation',
-      payload: {
-        tool_use_id: toolCallId,
-        allow,
-        deepThinking,
-      },
-    }]);
-  }, [addNotification, submitEvent, deepThinking]);
+    try {
+      const result = await submitEvent([{
+        type: 'user.tool_confirmation',
+        payload: {
+          tool_use_id: toolCallId,
+          allow,
+          deepThinking,
+        },
+      }]);
+
+      if (!result.accepted) {
+        if ('duplicateReason' in result) {
+          // 服务端已处理过：静默把卡片收尾，不提示成功、不追加消息、不推进轮次
+          markConfirmation();
+        }
+        // 其他错误：保持 pending，允许用户重试（错误提示已由 submitEvent 发出）
+        return;
+      }
+
+      // 确认不是新一轮用户输入：不追加可见用户消息、不推进轮次，
+      // 工具结果与后续回答继续归入原挂起轮次（确认不单独呈现）。
+      markConfirmation();
+      addNotification('info', allow ? `已允许执行：${toolName}` : `已拒绝执行：${toolName}`);
+    } finally {
+      submittingRef.current = false;
+    }
+  }, [addNotification, submitEvent, deepThinking, toolConfirmations, handleUserToolConfirmation]);
 
   // 提交追问问卷
   const submitFollowupQuestionnaire = useCallback(async () => {
     const questionnaire = followupQuestionnaire;
-    if (!questionnaire) return;
+    if (!questionnaire || submittingRef.current) return;
 
     // 防御：问卷绑定的工具调用必须仍处于挂起态。服务端只挂起最新一次调用，
     // 若该次已失败或被新的调用取代，提交旧 tool_use_id 会被框架判为
     // Invalid tool result IDs 并整体返回 503。
     const targetToolCallId = questionnaire.toolCallId || questionnaire.id;
+    const handledKeys = getHandledFollowupKeys(identity.sessionId);
     const boundTool = toolUses.find(
       t => t.name === 'ask_followup_questions'
         && t.type === 'tool'
         && (t.toolCallId || t.id) === targetToolCallId,
     );
-    if (!boundTool || boundTool.status !== 'pending') {
-      handledFollowupIdsRef.current.add(questionnaire.id);
+    if (!boundTool || (boundTool.status !== 'pending' && boundTool.status !== 'suspended')) {
+      handledKeys.add(targetToolCallId);
       setFollowupQuestionnaire(null);
       addNotification('warning', '该追问已失效，正在等待最新的追问');
       return;
@@ -946,34 +1263,50 @@ export default function AgentChatPage() {
       answer,
     }));
 
-    const submitted = await submitEvent([{
-      type: 'user.tool_result',
-      payload: {
-        // 必须用模型给出的 toolCallId，前端卡片 id 是本地事件 id，服务端无法匹配
-        tool_use_id: targetToolCallId,
-        name: 'ask_followup_questions',
-        content: JSON.stringify(answers),
-        deepThinking,
-      },
-    }]);
-    // 只有后端确认受理（HTTP 2xx）才推进本地状态，避免“没提交成功却已清空问卷”
-    if (!submitted) return;
+    submittingRef.current = true;
+    try {
+      const result = await submitEvent([{
+        type: 'user.tool_result',
+        payload: {
+          // 必须用模型给出的 toolCallId，前端卡片 id 是本地事件 id，服务端无法匹配
+          tool_use_id: targetToolCallId,
+          name: 'ask_followup_questions',
+          content: JSON.stringify(answers),
+          deepThinking,
+        },
+      }]);
+      // 只有后端确认受理（HTTP 2xx）才推进本地状态，避免“没提交成功却已清空问卷”
+      if (!result.accepted) {
+        if ('duplicateReason' in result) {
+          // 服务端已处理过：静默收尾，不提示成功、不追加答案、不推进轮次
+          handledKeys.add(targetToolCallId);
+          handleUserToolResult(targetToolCallId);
+          setFollowupQuestionnaire(null);
+        }
+        // 其他错误：保留问卷与 pending，允许用户重试
+        return;
+      }
+      handledKeys.add(targetToolCallId);
+      handleUserToolResult(targetToolCallId);
 
-    // 提交答案进入下一轮，服务端据此推进同一次挂起调用
-    beginUserTurnRef.current?.();
+      // 提交答案进入下一轮，服务端据此推进同一次挂起调用
+      beginUserTurnRef.current?.();
 
-    // 前端只展示可读答案，不暴露原始 JSON
-    const readable = answers.map((a, i) => `${i + 1}. ${a.question}：${a.answer}`).join('\n');
-    setFollowupAnswers(prev => [...prev, {
-      id: generateId(),
-      content: readable,
-      turnId: questionnaire.turnId,
-      timestamp: Date.now(),
-    }]);
+      // 前端只展示可读答案，不暴露原始 JSON
+      const readable = answers.map((a, i) => `${i + 1}. ${a.question}：${a.answer}`).join('\n');
+      setFollowupAnswers(prev => [...prev, {
+        id: generateId(),
+        content: readable,
+        turnId: questionnaire.turnId,
+        timestamp: Date.now(),
+      }]);
 
-    setFollowupQuestionnaire(null);
-    addNotification('success', '追问答案已提交');
-  }, [followupQuestionnaire, toolUses, submitEvent, addNotification, deepThinking]);
+      setFollowupQuestionnaire(null);
+      addNotification('success', '追问答案已提交');
+    } finally {
+      submittingRef.current = false;
+    }
+  }, [followupQuestionnaire, toolUses, submitEvent, addNotification, deepThinking, getHandledFollowupKeys, identity.sessionId, handleUserToolResult]);
   // SSE 回调
   const handleMessage = useCallback((message: Message) => {
     // SSE 回显的用户消息：先移除本地乐观占位，避免「显示两遍」
@@ -986,14 +1319,65 @@ export default function AgentChatPage() {
         setPendingUserMessages(prev => prev.filter(p => p.id !== matched.id));
       }
     }
-    // 按 id 去重：SSE 重连回放时会重复推送同一条事件
+    // 按 id 去重：SSE 重连回放时会重复推送同一条事件。
+    // 例外：UI 快照里可能留下同 id 的流式半截气泡，
+    // 此时必须用落盘的权威文本收尾，否则气泡会一直停在 streaming。
     setMessages(prev => {
-      if (prev.some(m => m.id === message.id)) return prev;
-      return [...prev, { ...message, timestamp: message.timestamp || Date.now() }];
+      const index = prev.findIndex(m => m.id === message.id);
+      if (index === -1) {
+        const appended = { ...message, timestamp: message.timestamp || Date.now() };
+        messageMapRef.current.set(appended.id, appended);
+        return [...prev, appended];
+      }
+      const existing = prev[index];
+      if (!existing.isStreaming) return prev;
+      const updated = [...prev];
+      updated[index] = {
+        ...existing,
+        content: message.content || existing.content,
+        isStreaming: false,
+        turnId: message.turnId ?? existing.turnId,
+        ...(message.experts ? { experts: message.experts } : {}),
+      };
+      messageMapRef.current.set(updated[index].id, updated[index]);
+      return updated;
     });
-    messageMapRef.current.set(message.id, message);
     scrollToBottom();
   }, [scrollToBottom]);
+
+  // 预览快照恢复的完整正文（不是增量）：缺失时建流式气泡，同 id 流式气泡整体覆盖
+  const handleMessageSnapshot = useCallback(
+    (id: string, content: string, turnId?: number, startedAt?: number) => {
+      if (!id || !content) return;
+      setMessages(prev => {
+        const index = prev.findIndex(m => m.id === id);
+        if (index === -1) {
+          const item: Message = {
+            id,
+            type: 'assistant',
+            content,
+            timestamp: startedAt ?? Date.now(),
+            turnId,
+            isStreaming: true,
+          };
+          messageMapRef.current.set(id, item);
+          return [...prev, item];
+        }
+        // 已定稿的非流式气泡是权威文本，快照不能覆盖
+        if (!prev[index].isStreaming) return prev;
+        const updated = [...prev];
+        updated[index] = {
+          ...prev[index],
+          content,
+          turnId: turnId ?? prev[index].turnId,
+        };
+        messageMapRef.current.set(id, updated[index]);
+        return updated;
+      });
+      scrollToBottom();
+    },
+    [scrollToBottom],
+  );
 
   const handleMessageUpdate = useCallback((id: string, content: string) => {
     // 只按事件 id 精确更新，避免 delta 落到上一轮的助手气泡里
@@ -1065,12 +1449,55 @@ export default function AgentChatPage() {
 
   const handleThinking = useCallback((thinkingData: Thinking) => {
     const item = { ...thinkingData, timestamp: Date.now() };
-    setThinking(prev => [...prev, item]);
+    // 按 id 幂等 upsert：重连回放或预览快照已建过条目时不能再追加一段
+    setThinking(prev => {
+      const index = prev.findIndex(t => t.id === item.id);
+      if (index === -1) return [...prev, item];
+      const updated = [...prev];
+      updated[index] = { ...updated[index], ...item, timestamp: updated[index].timestamp };
+      return updated;
+    });
     thinkingMapRef.current.set(item.id, item);
     if (thinkingExpanded) {
       scrollToBottom();
     }
   }, [scrollToBottom, thinkingExpanded]);
+
+  // 预览快照恢复的完整思考文本（不是增量）：覆盖同 id 条目，并保持流式态直到落盘
+  const handleThinkingSnapshot = useCallback(
+    (id: string, content: string, turnId?: number, startedAt?: number) => {
+      if (!id) return;
+      setThinking(prev => {
+        const index = prev.findIndex(t => t.id === id);
+        if (index === -1) {
+          const item: Thinking = {
+            id,
+            content,
+            isStreaming: true,
+            turnId,
+            timestamp: startedAt ?? Date.now(),
+          };
+          thinkingMapRef.current.set(id, item);
+          return [...prev, item];
+        }
+        // 已落盘的权威文本优先，快照不得把定稿条目打回流式态
+        if (!prev[index].isStreaming) return prev;
+        const updated = [...prev];
+        updated[index] = {
+          ...prev[index],
+          content,
+          isStreaming: true,
+          turnId: turnId ?? prev[index].turnId,
+        };
+        thinkingMapRef.current.set(id, updated[index]);
+        return updated;
+      });
+      if (thinkingExpanded) {
+        scrollToBottom();
+      }
+    },
+    [scrollToBottom, thinkingExpanded],
+  );
 
   const handleThinkingUpdate = useCallback((id: string, content: string) => {
     setThinking(prev => {
@@ -1121,7 +1548,7 @@ export default function AgentChatPage() {
     setToolUses(prev => {
       const existing = prev.find(t => t.id === toolUse.id);
       if (existing) {
-        return prev.map(t => t.id === toolUse.id ? { ...t, ...toolUse } : t);
+        return prev.map(t => t.id === toolUse.id ? mergeToolUseFrame(t, toolUse) : t);
       }
       return [...prev, { ...toolUse, timestamp: Date.now() }];
     });
@@ -1129,17 +1556,27 @@ export default function AgentChatPage() {
   }, [scrollToBottom]);
 
   const handleToolResult = useCallback((toolResult: ToolUse) => {
+    // 已经产出终态说明对应确认早已处理完：刷新 / 回放历史时不能再次出现可点击的确认卡
+    if (toolResult.toolCallId) {
+      const resolvedId = toolResult.toolCallId;
+      settledToolCallIdsRef.current.add(resolvedId);
+      setToolConfirmations(prev =>
+        prev.some(tc => tc.toolCallId === resolvedId && tc.status === 'pending')
+          ? prev.map(tc =>
+              tc.toolCallId === resolvedId && tc.status === 'pending'
+                ? { ...tc, status: 'resolved' as const }
+                : tc
+            )
+          : prev
+      );
+    }
     setToolUses(prev => {
       const exists = prev.some(t => t.id === toolResult.id);
       if (!exists) {
         // 兜底：没赶上 tool_use 事件时也要把结果展示出来
         return [...prev, { ...toolResult, timestamp: Date.now() }];
       }
-      return prev.map(t =>
-        t.id === toolResult.id
-          ? { ...t, output: toolResult.output, status: toolResult.status, finishedAt: toolResult.finishedAt }
-          : t
-      );
+      return prev.map(t => (t.id === toolResult.id ? mergeToolResult(t, toolResult) : t));
     });
     scrollToBottom();
   }, [scrollToBottom]);
@@ -1148,7 +1585,7 @@ export default function AgentChatPage() {
     setToolUses(prev => {
       const existing = prev.find(t => t.id === skillUse.id);
       if (existing) {
-        return prev.map(t => t.id === skillUse.id ? { ...t, ...skillUse } : t);
+        return prev.map(t => t.id === skillUse.id ? mergeToolUseFrame(t, skillUse) : t);
       }
       return [...prev, { ...skillUse, timestamp: Date.now() }];
     });
@@ -1161,11 +1598,7 @@ export default function AgentChatPage() {
       if (!exists) {
         return [...prev, { ...skillResult, timestamp: Date.now() }];
       }
-      return prev.map(t =>
-        t.id === skillResult.id
-          ? { ...t, output: skillResult.output, status: skillResult.status, finishedAt: skillResult.finishedAt }
-          : t
-      );
+      return prev.map(t => (t.id === skillResult.id ? mergeToolResult(t, skillResult) : t));
     });
     scrollToBottom();
   }, [scrollToBottom]);
@@ -1175,6 +1608,8 @@ export default function AgentChatPage() {
   }, [addNotification]);
 
   const handleToolConfirmation = useCallback((confirmation: ToolConfirmation) => {
+    // 结果 / 确认事件已先到：这条 requires_action 是重放或迟到的，不能再变出可点击的确认卡
+    if (settledToolCallIdsRef.current.has(confirmation.toolCallId)) return;
     setToolConfirmations(prev => {
       // 避免重复
       if (prev.some(tc => tc.toolCallId === confirmation.toolCallId)) {
@@ -1213,8 +1648,13 @@ export default function AgentChatPage() {
     [],
   );
   const handleError = useCallback((message: string) => {
-    setError(message);
-    addNotification('error', message);
+    const text = message?.trim() || '会话处理失败，请稍后重试';
+    setError(text);
+    addNotification('error', text);
+    // 超时 / 工具调用上限等致命错误后，页面必须回到可输入状态
+    setIsRunning(false);
+    setMessages(prev => prev.map(m => (m.isStreaming ? { ...m, isStreaming: false } : m)));
+    setThinking(prev => prev.map(t => (t.isStreaming ? { ...t, isStreaming: false } : t)));
   }, [addNotification]);
 
   const handleInterrupted = useCallback(() => {
@@ -1225,6 +1665,11 @@ export default function AgentChatPage() {
   // 处理追问工具：同一张问卷只渲染一次，提交后不再重建。
   // 关键：必须从未处理的工具里挑选，否则第二轮问卷会被第一轮已处理的工具挡住。
   useEffect(() => {
+    // 幂等键用模型侧 toolCallId（缺失时回退卡片 id），并按会话分桶保存：
+    // 切会话 / 重连回放不会把已处理过的追问重新弹出来。
+    const handledKeys = getHandledFollowupKeys(identity.sessionId);
+    const toolKey = (t: ToolUse) => t.toolCallId || t.id;
+
     // 问卷必须始终指向「仍处于挂起态」的追问调用。
     // 模型可能先发一次非法调用（被工具参数校验判为 ERROR）再重试出新的 tool_use，
     // 若旧问卷不失效，用户提交的 tool_use_id 与服务端当前挂起的 id 不一致，
@@ -1234,11 +1679,11 @@ export default function AgentChatPage() {
       const boundTool = toolUses.find(
         t => t.name === 'ask_followup_questions'
           && t.type === 'tool'
-          && (t.toolCallId || t.id) === boundToolCallId,
+          && toolKey(t) === boundToolCallId,
       );
-      if (boundTool && boundTool.status === 'pending') return;
+      if (boundTool && (boundTool.status === 'pending' || boundTool.status === 'suspended')) return;
       // 绑定调用已失败/已完成/已被替换：作废问卷，交给下一轮 effect 重新挑选
-      handledFollowupIdsRef.current.add(followupQuestionnaire.id);
+      handledKeys.add(boundToolCallId);
       setFollowupQuestionnaire(null);
       return;
     }
@@ -1247,14 +1692,14 @@ export default function AgentChatPage() {
     const pendingFollowups = toolUses.filter(
       t => t.name === 'ask_followup_questions'
         && t.type === 'tool'
-        && t.status === 'pending'
+        && (t.status === 'pending' || t.status === 'suspended')
         && t.input
-        && !handledFollowupIdsRef.current.has(t.id),
+        && !handledKeys.has(toolKey(t)),
     );
     if (pendingFollowups.length === 0) return;
     const askFollowupTool = pendingFollowups[pendingFollowups.length - 1];
     // 同批里更早的挂起调用已被最新一次取代，标记掉避免后续再被选中
-    pendingFollowups.slice(0, -1).forEach(stale => handledFollowupIdsRef.current.add(stale.id));
+    pendingFollowups.slice(0, -1).forEach(stale => handledKeys.add(toolKey(stale)));
 
     // 兼容压扁/字符串化 JSON（短横线 JSON、截断 JSON、字段缺失）
     const questions = normalizeFollowupInput(askFollowupTool.input);
@@ -1264,7 +1709,7 @@ export default function AgentChatPage() {
         initialAnswers[q.question] = '';
       });
 
-      handledFollowupIdsRef.current.add(askFollowupTool.id);
+      handledKeys.add(toolKey(askFollowupTool));
       setFollowupQuestionnaire({
         id: askFollowupTool.id,
         toolCallId: askFollowupTool.toolCallId || askFollowupTool.id,
@@ -1277,9 +1722,9 @@ export default function AgentChatPage() {
     }
 
     // 解析失败也标记已处理，避免同一工具的无效入参反复弹提示
-    handledFollowupIdsRef.current.add(askFollowupTool.id);
+    handledKeys.add(toolKey(askFollowupTool));
     addNotification('warning', '追问提示解析失败，请重新发起追问');
-  }, [toolUses, followupQuestionnaire, addNotification]);
+  }, [identity.sessionId, toolUses, followupQuestionnaire, addNotification, getHandledFollowupKeys]);
 
   // 问卷刚出现时把卡片滚进视野：否则「提交答案」会落在折叠线以下，看起来像渲染不完整。
   const pendingQuestionnaireId = followupQuestionnaire?.id ?? null;
@@ -1416,14 +1861,20 @@ export default function AgentChatPage() {
       onMessage: handleMessage,
       onMessageUpdate: handleMessageUpdate,
       onMessageFinalize: handleMessageFinalize,
+      onMessageSnapshot: handleMessageSnapshot,
       onThinking: handleThinking,
       onThinkingUpdate: handleThinkingUpdate,
       onThinkingFinalize: handleThinkingFinalize,
+      onThinkingSnapshot: handleThinkingSnapshot,
       onNarration: handleNarration,
       onMessageRemove: handleMessageRemove,
       onCitation: handleCitation,
       onToolUse: handleToolUse,
+      // 挂起事件复用同一张工具卡：按 toolCallId 映射到的 cardId 合并，不新增卡片
+      onToolSuspended: handleToolUse,
       onToolResult: handleToolResult,
+      onUserToolResult: handleUserToolResult,
+      onUserToolConfirmation: handleUserToolConfirmation,
       onSkillUse: handleSkillUse,
       onSkillResult: handleSkillResult,
       onSkillLoaded: handleSkillLoaded,
@@ -1560,35 +2011,56 @@ export default function AgentChatPage() {
     );
   };
 
-  const renderConfirmationCard = (confirmation: ToolConfirmation) => (
-    <Card key={confirmation.toolCallId} className="mb-3 rounded-xl border-border bg-secondary/30 p-4">
-      <div className="mb-2 flex items-center gap-2">
-        <AlertCircle className="h-4 w-4 text-warning" />
-        <span className="font-medium text-foreground">
-          需要确认: {confirmation.toolName}
-        </span>
-      </div>
-      <div className="mb-3 text-sm text-muted-foreground">
-        <span className="font-medium text-foreground">输入: </span>
-        {getInputPreview(JSON.stringify(confirmation.input))}
-      </div>
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          onClick={() => submitToolConfirmation(confirmation.toolCallId, confirmation.toolName, true)}
-        >
-          允许
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => submitToolConfirmation(confirmation.toolCallId, confirmation.toolName, false)}
-        >
-          拒绝
-        </Button>
-      </div>
-    </Card>
-  );
+  const renderConfirmationCard = (confirmation: ToolConfirmation) => {
+    const resolved =
+      confirmation.status === 'allowed' ||
+      confirmation.status === 'denied' ||
+      confirmation.status === 'resolved';
+    const allowed = confirmation.status === 'allowed';
+    return (
+      <Card key={confirmation.toolCallId} className="mb-3 rounded-xl border-border bg-secondary/30 p-4">
+        <div className="mb-2 flex items-center gap-2">
+          {resolved ? (
+            allowed
+              ? <Check className="h-4 w-4 text-success" />
+              : <XCircle className="h-4 w-4 text-destructive" />
+          ) : (
+            <AlertCircle className="h-4 w-4 text-warning" />
+          )}
+          <span className="font-medium text-foreground">
+            {confirmation.status === 'resolved'
+              ? `已处理: ${confirmation.toolName}`
+              : resolved
+                ? (allowed ? `已允许执行: ${confirmation.toolName}` : `已拒绝执行: ${confirmation.toolName}`)
+                : `需要确认: ${confirmation.toolName}`}
+          </span>
+        </div>
+        {!resolved && (
+          <>
+            <div className="mb-3 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">输入: </span>
+              {getInputPreview(JSON.stringify(confirmation.input))}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={() => submitToolConfirmation(confirmation.toolCallId, confirmation.toolName, true)}
+              >
+                允许
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => submitToolConfirmation(confirmation.toolCallId, confirmation.toolName, false)}
+              >
+                拒绝
+              </Button>
+            </div>
+          </>
+        )}
+      </Card>
+    );
+  };
 
   // 身份未确认前不渲染工作台：顶层未登录直接展示跳转占位，避免闪匿名界面 / 发无效请求
   if (!authReady || !frameChecked || (!activeUser && !isEmbedded && !devPreview)) {
@@ -1666,6 +2138,22 @@ export default function AgentChatPage() {
               />
               {devPreview ? '静态预览' : isConnected ? '已连接' : '未连接'}
             </span>
+
+            <button
+              type="button"
+              className="topbar-skills ui-interactive ui-focus-ring inline-flex"
+              onClick={() => setWorkspaceArtifactsOpen(true)}
+              title={`工作区产物（${artifacts.length}）`}
+              aria-label="工作区产物"
+            >
+              <FolderOpen className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden xl:inline">产物</span>
+              {artifacts.length > 0 && (
+                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium tabular-nums leading-none text-primary">
+                  {artifacts.length > 99 ? '99+' : artifacts.length}
+                </span>
+              )}
+            </button>
 
             <button
               type="button"
@@ -1787,7 +2275,7 @@ export default function AgentChatPage() {
 
                     {renderQuestionnaire(turn.turnId)}
 
-                    {pendingConfirmations.filter(tc => tc.turnId === turn.turnId).map(renderConfirmationCard)}
+                    {pendingConfirmations.filter(tc => tc.turnId === turn.turnId && tc.status !== 'resolved').map(renderConfirmationCard)}
 
                     {turn.messages
                       .filter(m => m.type === 'assistant')
@@ -1860,10 +2348,10 @@ export default function AgentChatPage() {
                 {activeQuestionnaire && (activeQuestionnaire.turnId == null || !turnIdSet.has(activeQuestionnaire.turnId)) && (
                   <div>{renderQuestionnaire()}</div>
                 )}
-                {pendingConfirmations.some(tc => tc.turnId == null || !turnIdSet.has(tc.turnId)) && (
+                {pendingConfirmations.some(tc => tc.status !== 'resolved' && (tc.turnId == null || !turnIdSet.has(tc.turnId))) && (
                   <div>
                     {pendingConfirmations
-                      .filter(tc => tc.turnId == null || !turnIdSet.has(tc.turnId))
+                      .filter(tc => tc.status !== 'resolved' && (tc.turnId == null || !turnIdSet.has(tc.turnId)))
                       .map(renderConfirmationCard)}
                   </div>
                 )}
@@ -1916,6 +2404,21 @@ export default function AgentChatPage() {
           )}
       </main>
       </div>
+
+      <WorkspaceArtifactsSheet
+        open={workspaceArtifactsOpen}
+        onOpenChange={setWorkspaceArtifactsOpen}
+        artifacts={artifacts}
+        userId={identity.userId || 'anonymous'}
+        sessionId={identity.sessionId || undefined}
+        onOpenArtifact={item => {
+          setCanvasArtifact(item);
+          setCanvasTurnId(null);
+          setCanvasExpanded(false);
+          setMobileChatOpen(false);
+          setWorkspaceArtifactsOpen(false);
+        }}
+      />
 
       <Sheet open={showToc} onOpenChange={setShowToc}>
         <SheetContent

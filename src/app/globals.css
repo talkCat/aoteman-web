@@ -2024,6 +2024,25 @@
   color: var(--success);
 }
 
+/* 挂起（等待用户确认 / 作答）：过程卡保持活动视觉，但用警告色区分「还没答完」 */
+.process-card.is-suspended {
+  border-color: color-mix(in oklab, var(--warning) 32%, var(--line-1));
+}
+
+.process-orb.is-waiting {
+  background: color-mix(in oklab, var(--warning) 26%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--warning) 12%, transparent);
+  animation: none;
+}
+
+.process-orb.is-waiting::before {
+  background: transparent;
+}
+
+.process-orb.is-waiting svg {
+  color: var(--warning);
+}
+
 @keyframes process-orb-spin {
   to {
     transform: rotate(360deg);
@@ -2282,6 +2301,27 @@
 
 .tool-state.is-error {
   color: var(--destructive);
+}
+
+.tool-state.is-cancelled {
+  color: var(--muted-foreground);
+}
+
+.tool-state.is-suspended {
+  color: var(--warning);
+}
+
+.tool-card.is-suspended {
+  border-color: color-mix(in oklab, var(--warning) 34%, var(--line-1));
+  background: color-mix(in oklab, var(--warning) 6%, var(--surface-2));
+}
+
+.dark .tool-card.is-suspended {
+  background: linear-gradient(
+    150deg,
+    color-mix(in oklab, var(--warning) 14%, rgba(255, 255, 255, 0.042)),
+    rgba(255, 255, 255, 0.012)
+  );
 }
 
 .tool-dot {
