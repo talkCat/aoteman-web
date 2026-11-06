@@ -2,7 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertCircle, BrainCircuit, MoreHorizontal, Plus, RefreshCw, Search, Sparkles, X } from 'lucide-react';
+import {
+  AlertCircle,
+  BrainCircuit,
+  CheckCircle2,
+  Database,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Users,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { EmptyState } from '@/components/admin/EmptyState';
@@ -148,6 +160,12 @@ export default function ExpertsPage() {
 
   const totalCount = experts?.length ?? 0;
   const activeCount = experts?.filter((expert) => expert.status === 'ACTIVE').length ?? 0;
+  const draftCount = experts?.filter((expert) => expert.status === 'DRAFT').length ?? 0;
+  // 统计卡只汇总真实字段：知识库绑定数来自 resources，授权数按专家逐个累加（同一人可被授权多个专家）。
+  const boundBaseTotal =
+    experts?.reduce((sum, expert) => sum + (expert.resources.knowledgeBaseCount ?? 0), 0) ?? 0;
+  const grantTotal =
+    experts?.reduce((sum, expert) => sum + (expert.resources.grantCount ?? 0), 0) ?? 0;
   const hasQuery = query.trim().length > 0;
   const hasFilters = hasQuery || statusFilter !== 'ALL';
 
@@ -211,6 +229,8 @@ export default function ExpertsPage() {
     <div className="space-y-6">
       <PageHeader
         title="专家模型"
+        eyebrow="EXPERT AGENTS"
+        art={{ src: "/brand/expert-3d.png", width: 320, height: 320 }}
         description="每个专家由提示词、知识库与用户授权组成；发布后，被授权用户可在问答页选择一个或多个专家协同回答。"
         actions={
           <Button asChild>
@@ -222,48 +242,49 @@ export default function ExpertsPage() {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative w-full max-w-[280px]">
-          <Search
-            className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索名称或描述"
-            aria-label="搜索专家"
-            className="h-11 pr-9 pl-8 md:h-9"
-          />
-          {hasQuery && (
-            <button
-              type="button"
-              onClick={() => setQuery('')}
-              className="ui-interactive ui-focus-ring absolute right-0 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded md:right-1.5 md:h-6 md:w-6 text-muted-foreground hover:bg-accent hover:text-foreground"
-              aria-label="清除搜索"
-            >
-              <X className="h-3.5 w-3.5" aria-hidden="true" />
-            </button>
-          )}
+      <div className="admin-stat-grid">
+        <div className="admin-stat-card">
+          <div className="admin-stat-top">
+            <span className="admin-stat-icon" aria-hidden="true">
+              <BrainCircuit className="h-4 w-4" />
+            </span>
+            <span className="admin-stat-delta">{experts ? '独立模块' : '加载中'}</span>
+          </div>
+          <strong className="admin-stat-value">{experts ? totalCount : '—'}</strong>
+          <span className="admin-stat-label">专家总数</span>
         </div>
-        <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-          <SelectTrigger className="h-11 w-[132px] md:h-9" aria-label="按状态筛选">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">全部状态</SelectItem>
-            <SelectItem value="ACTIVE">已发布</SelectItem>
-            <SelectItem value="DRAFT">草稿</SelectItem>
-            <SelectItem value="DISABLED">已停用</SelectItem>
-          </SelectContent>
-        </Select>
-        <span className="ml-auto text-xs tabular-nums text-muted-foreground" aria-live="polite">
-          {experts
-            ? hasFilters
-              ? `显示 ${visibleExperts.length} / ${totalCount} 个专家`
-              : `${totalCount} 个专家 · ${activeCount} 个已发布`
-            : '加载中…'}
-        </span>
+        <div className="admin-stat-card">
+          <div className="admin-stat-top">
+            <span className="admin-stat-icon" data-tone="green" aria-hidden="true">
+              <CheckCircle2 className="h-4 w-4" />
+            </span>
+            <span className="admin-stat-delta" data-tone={draftCount === 0 && experts ? 'up' : undefined}>
+              {experts ? (draftCount > 0 ? `${draftCount} 个草稿` : '全部已发布') : '加载中'}
+            </span>
+          </div>
+          <strong className="admin-stat-value">{experts ? activeCount : '—'}</strong>
+          <span className="admin-stat-label">已发布专家</span>
+        </div>
+        <div className="admin-stat-card">
+          <div className="admin-stat-top">
+            <span className="admin-stat-icon" data-tone="cyan" aria-hidden="true">
+              <Database className="h-4 w-4" />
+            </span>
+            <span className="admin-stat-delta">{experts ? '跨库检索' : '加载中'}</span>
+          </div>
+          <strong className="admin-stat-value">{experts ? boundBaseTotal : '—'}</strong>
+          <span className="admin-stat-label">绑定知识库</span>
+        </div>
+        <div className="admin-stat-card">
+          <div className="admin-stat-top">
+            <span className="admin-stat-icon" data-tone="amber" aria-hidden="true">
+              <Users className="h-4 w-4" />
+            </span>
+            <span className="admin-stat-delta">{experts ? '按专家累加' : '加载中'}</span>
+          </div>
+          <strong className="admin-stat-value">{experts ? grantTotal : '—'}</strong>
+          <span className="admin-stat-label">授权用户</span>
+        </div>
       </div>
 
       {loadError ? (
@@ -281,9 +302,9 @@ export default function ExpertsPage() {
       ) : null}
 
       {!experts ? (
-        <div className="surface-raised overflow-hidden rounded-xl border border-border/70 bg-card" aria-busy="true">
+        <div className="admin-panel" aria-busy="true">
           {Array.from({ length: 5 }).map((_, index) => (
-            <div key={index} className="flex items-center gap-3 border-b border-border/50 px-4 py-3.5 last:border-b-0">
+            <div key={index} className="flex items-center gap-3 border-b border-line-1 px-4 py-3.5 last:border-b-0">
               <Skeleton className="h-9 w-9 rounded-full" />
               <div className="space-y-1.5">
                 <Skeleton className="h-3.5 w-32" />
@@ -295,7 +316,8 @@ export default function ExpertsPage() {
           ))}
         </div>
       ) : visibleExperts.length === 0 ? (
-        <EmptyState
+        <div className="admin-panel p-3">
+          <EmptyState
           title={
             hasQuery
               ? `没有匹配「${query.trim()}」的专家`
@@ -329,10 +351,60 @@ export default function ExpertsPage() {
               </Button>
             )
           }
-        />
+          />
+        </div>
       ) : (
-        <div className="surface-raised overflow-hidden rounded-xl border border-border/70 bg-card">
-          <div className="hidden grid-cols-[minmax(0,1fr)_168px_76px_84px_96px_40px] items-center gap-3 border-b border-border/60 bg-muted/30 px-4 py-2 text-xs font-medium text-muted-foreground md:grid">
+        <div className="admin-panel">
+          <div className="admin-panel-bar">
+            <div className="min-w-0">
+              <div className="admin-panel-title">专家列表</div>
+              <div className="admin-panel-subtitle" aria-live="polite">
+                {hasFilters
+                  ? `显示 ${visibleExperts.length} / ${totalCount} 个专家`
+                  : `${totalCount} 个专家 · 资源、授权与发布状态`}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative w-full max-w-[280px]">
+                <Search
+                  className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <Input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="搜索名称或描述"
+                  aria-label="搜索专家"
+                  className="h-11 pr-9 pl-8 md:h-9"
+                />
+                {hasQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setQuery('')}
+                    className="ui-interactive ui-focus-ring absolute right-0 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded md:right-1.5 md:h-6 md:w-6 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    aria-label="清除搜索"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+              <Select
+                value={statusFilter}
+                onValueChange={(value) => setStatusFilter(value as StatusFilter)}
+              >
+                <SelectTrigger className="h-11 w-[132px] md:h-9" aria-label="按状态筛选">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">全部状态</SelectItem>
+                  <SelectItem value="ACTIVE">已发布</SelectItem>
+                  <SelectItem value="DRAFT">草稿</SelectItem>
+                  <SelectItem value="DISABLED">已停用</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="hidden grid-cols-[minmax(0,1fr)_168px_76px_84px_96px_40px] items-center gap-3 border-b border-line-1 bg-surface-2/60 px-4 py-2 text-xs font-medium text-fg-3 md:grid">
             <span>专家</span>
             <span>资源</span>
             <span className="text-right">授权</span>
@@ -341,18 +413,18 @@ export default function ExpertsPage() {
             <span className="sr-only">操作</span>
           </div>
 
-          <div className="divide-y divide-border/50">
+          <div className="divide-y divide-line-1">
             {visibleExperts.map((expert) => {
               const meta = STATUS_META[expert.status];
               return (
                 <div
                   key={expert.expertId}
-                  className="ui-interactive ui-focus-row relative grid grid-cols-1 gap-2 px-4 py-3.5 hover:bg-accent/60 focus-within:bg-accent/40 md:grid-cols-[minmax(0,1fr)_168px_76px_84px_96px_40px] md:items-center md:gap-3"
+                  className="ui-interactive ui-focus-row relative grid grid-cols-1 gap-2 px-4 py-3.5 hover:bg-surface-2/50 focus-within:bg-surface-2/70 md:grid-cols-[minmax(0,1fr)_168px_76px_84px_96px_40px] md:items-center md:gap-3"
                 >
                   <div className="flex min-w-0 items-start gap-2.5 pr-12 md:pr-0">
-                    <Avatar className="mt-0.5 h-8 w-8 border border-border/60">
+                    <Avatar className="mt-0.5 h-8 w-8">
                       {expert.avatarUrl ? <AvatarImage src={expert.avatarUrl} alt="" /> : null}
-                      <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary">
+                      <AvatarFallback className="bg-accent-wash text-xs font-medium text-accent-base">
                         {initialOf(expert.name)}
                       </AvatarFallback>
                     </Avatar>

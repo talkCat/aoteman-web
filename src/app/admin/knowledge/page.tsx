@@ -3,7 +3,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, MoreHorizontal, Plus, RefreshCw, Search, X } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Database,
+  FileText,
+  Layers,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Search,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { EmptyState } from '@/components/admin/EmptyState';
@@ -137,12 +148,21 @@ export default function KnowledgeListPage() {
   }
 
   const totalCount = bases?.filter((base) => base.status !== 'DELETED').length ?? 0;
+  const activeCount = bases?.filter((base) => base.status === 'ACTIVE').length ?? 0;
+  const documentTotal =
+    bases?.reduce((sum, base) => sum + (base.documentCount ?? 0), 0) ?? 0;
+  // 列表接口不保证返回切片数：未知按「未统计」展示，不能混进 0。
+  const knownChunkBases = bases?.filter((base) => base.chunkCount !== null) ?? [];
+  const chunkTotal = knownChunkBases.reduce((sum, base) => sum + (base.chunkCount ?? 0), 0);
+  const chunksComplete = bases !== null && knownChunkBases.length === totalCount;
   const hasQuery = query.trim().length > 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader
         title="知识库"
+        eyebrow="KNOWLEDGE BASES"
+        art={{ src: "/brand/knowledge-3d.png", width: 320, height: 320 }}
         description="管理 20–30 个知识库，供专家模型与直接授权用户检索。文档只收 .docx，切片结果在这里核对。"
         actions={
           <Button onClick={() => setCreateOpen(true)}>
@@ -152,188 +172,247 @@ export default function KnowledgeListPage() {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative w-full max-w-[280px]">
-          <Search
-            className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索名称或描述"
-            aria-label="搜索知识库"
-            className="h-11 pr-9 pl-8 md:h-9"
-          />
-          {hasQuery && (
-            <button
-              type="button"
-              onClick={() => setQuery('')}
-              className="ui-interactive ui-focus-ring absolute right-0 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded md:right-1.5 md:h-6 md:w-6 text-muted-foreground hover:bg-accent hover:text-foreground"
-              aria-label="清除搜索"
-            >
-              <X className="h-3.5 w-3.5" aria-hidden="true" />
-            </button>
-          )}
+      <div className="admin-stat-grid">
+        <div className="admin-stat-card">
+          <div className="admin-stat-top">
+            <span className="admin-stat-icon" aria-hidden="true">
+              <Database className="h-4 w-4" />
+            </span>
+            <span className="admin-stat-delta">{bases ? `${activeCount} 个启用` : '加载中'}</span>
+          </div>
+          <strong className="admin-stat-value">{bases ? formatCount(totalCount) : '—'}</strong>
+          <span className="admin-stat-label">知识库总数</span>
         </div>
-        <Select value={sortKey} onValueChange={(value) => setSortKey(value as SortKey)}>
-          <SelectTrigger className="h-11 w-[132px] md:h-9" aria-label="排序方式">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="updated">最近更新</SelectItem>
-            <SelectItem value="name">名称</SelectItem>
-            <SelectItem value="documents">文档数</SelectItem>
-          </SelectContent>
-        </Select>
-        <span className="ml-auto text-xs tabular-nums text-muted-foreground" aria-live="polite">
-          {bases
-            ? hasQuery
-              ? `显示 ${visibleBases.length} / ${totalCount} 个知识库`
-              : `${totalCount} 个知识库`
-            : loadError
-              ? '加载失败'
-              : '加载中…'}
-        </span>
+        <div className="admin-stat-card">
+          <div className="admin-stat-top">
+            <span className="admin-stat-icon" data-tone="cyan" aria-hidden="true">
+              <FileText className="h-4 w-4" />
+            </span>
+            <span className="admin-stat-delta">{bases ? '已收录' : '加载中'}</span>
+          </div>
+          <strong className="admin-stat-value">{bases ? formatCount(documentTotal) : '—'}</strong>
+          <span className="admin-stat-label">文档总数</span>
+        </div>
+        <div className="admin-stat-card">
+          <div className="admin-stat-top">
+            <span className="admin-stat-icon" data-tone="amber" aria-hidden="true">
+              <Layers className="h-4 w-4" />
+            </span>
+            <span className="admin-stat-delta">
+              {chunksComplete
+                ? '全部已统计'
+                : knownChunkBases.length > 0
+                  ? `${knownChunkBases.length}/${totalCount} 库已统计`
+                  : '待统计'}
+            </span>
+          </div>
+          <strong className="admin-stat-value">
+            {knownChunkBases.length > 0 ? formatCount(chunkTotal) : '—'}
+          </strong>
+          <span className="admin-stat-label">切片总数</span>
+        </div>
+        <div className="admin-stat-card">
+          <div className="admin-stat-top">
+            <span className="admin-stat-icon" data-tone="green" aria-hidden="true">
+              <CheckCircle2 className="h-4 w-4" />
+            </span>
+            <span className="admin-stat-delta">
+              {totalCount - activeCount > 0 ? `${totalCount - activeCount} 个停用` : '全部启用'}
+            </span>
+          </div>
+          <strong className="admin-stat-value">{bases ? formatCount(activeCount) : '—'}</strong>
+          <span className="admin-stat-label">启用知识库</span>
+        </div>
       </div>
 
-      {loadError ? (
-        <div
-          role="alert"
-          className="surface-raised flex flex-wrap items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3"
-        >
-          <AlertCircle className="h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
-          <p className="min-w-0 flex-1 text-sm text-destructive">{loadError}</p>
-          <Button variant="outline" size="sm" onClick={() => void load()}>
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-            重试
-          </Button>
-        </div>
-      ) : !bases ? (
-        <div className="surface-raised overflow-hidden rounded-xl border border-border/70 bg-card" aria-busy="true">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="flex items-center gap-4 border-b border-border/50 px-4 py-3.5 last:border-b-0">
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className="ml-auto h-3 w-10" />
-              <Skeleton className="h-3 w-10" />
-              <Skeleton className="h-3 w-10" />
+      <div className="admin-panel">
+        <div className="admin-panel-bar">
+          <div className="min-w-0">
+            <div className="admin-panel-title">知识库列表</div>
+            <div className="admin-panel-subtitle" aria-live="polite">
+              {bases
+                ? hasQuery
+                  ? `显示 ${visibleBases.length} / ${totalCount} 个知识库`
+                  : `${totalCount} 个知识库 · 文档、切片与授权范围`
+                : loadError
+                  ? '加载失败'
+                  : '加载中…'}
             </div>
-          ))}
-        </div>
-      ) : visibleBases.length === 0 ? (
-        <EmptyState
-          title={hasQuery ? `没有匹配「${query.trim()}」的知识库` : '还没有知识库'}
-          description={hasQuery ? '换个关键词，也可以清除筛选后重试。' : '先建一个库，再上传 .docx 文档。'}
-          action={
-            hasQuery ? (
-              <Button variant="outline" size="sm" onClick={() => setQuery('')}>
-                清除筛选
-              </Button>
-            ) : (
-              <Button size="sm" onClick={() => setCreateOpen(true)}>
-                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                新建知识库
-              </Button>
-            )
-          }
-        />
-      ) : (
-        <div className="surface-raised overflow-hidden rounded-xl border border-border/70 bg-card">
-          <div className="hidden grid-cols-[minmax(0,1fr)_64px_80px_88px_96px_112px_40px] items-center gap-3 border-b border-border/60 bg-muted/30 px-4 py-2 text-xs font-medium text-muted-foreground md:grid">
-            <span>名称</span>
-            <span className="text-right">文档</span>
-            <span className="text-right">切片</span>
-            <span className="text-right">授权用户</span>
-            <span>状态</span>
-            <span className="text-right">更新</span>
-            <span className="sr-only">操作</span>
           </div>
-
-          <div className="divide-y divide-border/50">
-            {visibleBases.map((base) => {
-              const meta = STATUS_META[base.status];
-              return (
-                <div
-                  key={base.kbId}
-                  className="ui-interactive ui-focus-row relative grid grid-cols-1 gap-2 px-4 py-3.5 hover:bg-accent/60 focus-within:bg-accent/40 md:grid-cols-[minmax(0,1fr)_64px_80px_88px_96px_112px_40px] md:items-center md:gap-3"
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full max-w-[280px]">
+              <Search
+                className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="搜索名称或描述"
+                aria-label="搜索知识库"
+                className="h-11 pr-9 pl-8 md:h-9"
+              />
+              {hasQuery && (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  className="ui-interactive ui-focus-ring absolute right-0 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded md:right-1.5 md:h-6 md:w-6 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  aria-label="清除搜索"
                 >
-                  <div className="min-w-0 pr-12 md:pr-0">
-                    <div className="flex items-center gap-2">
-                      <Link
-                        href={`/admin/knowledge/${base.kbId}`}
-                        data-row-link
-                        className="truncate text-sm font-medium after:absolute after:inset-0 after:content-['']"
-                      >
-                        {base.name}
-                      </Link>
-                      <span className="md:hidden">
-                        <StatusBadge tone={meta.tone} label={meta.label} />
-                      </span>
-                    </div>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {base.description ?? '未填写描述'}
-                    </p>
-                    <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground md:hidden">
-                      <span className="whitespace-nowrap font-mono tabular-nums">
-                        {formatCount(base.documentCount)} 份文档 · {chunkLabel(base.chunkCount)} 块
-                      </span>
-                      <span className="whitespace-nowrap font-mono tabular-nums">
-                        {formatCount(base.grantCount)} 人授权 · {formatDateTime(base.updatedAt)}
-                      </span>
-                    </p>
-                  </div>
-
-                  <span className="hidden text-right font-mono text-xs tabular-nums md:block">
-                    {formatCount(base.documentCount)}
-                  </span>
-                  <span className="hidden text-right font-mono text-xs tabular-nums md:block">
-                    {chunkLabel(base.chunkCount)}
-                  </span>
-                  <span className="hidden text-right font-mono text-xs tabular-nums md:block">
-                    {formatCount(base.grantCount)}
-                  </span>
-                  <span className="hidden md:block">
-                    <StatusBadge tone={meta.tone} label={meta.label} />
-                  </span>
-                  <span className="hidden text-right font-mono text-xs tabular-nums text-muted-foreground md:block">
-                    {formatDateTime(base.updatedAt)}
-                  </span>
-
-                  <div className="absolute right-1 top-1 z-10 flex justify-end md:relative md:right-auto md:top-auto md:justify-center">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-11 w-11 text-muted-foreground md:h-8 md:w-8"
-                          aria-label={`知识库「${base.name}」的更多操作`}
-                        >
-                          <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem onSelect={() => router.push(`/admin/knowledge/${base.kbId}?tab=grants`)}>
-                          授权用户
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => router.push(`/admin/knowledge/${base.kbId}?tab=settings`)}>
-                          设置
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onSelect={() => setDeleteTarget(base)}
-                        >
-                          删除
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              );
-            })}
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+            <Select value={sortKey} onValueChange={(value) => setSortKey(value as SortKey)}>
+              <SelectTrigger className="h-11 w-[132px] md:h-9" aria-label="排序方式">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="updated">最近更新</SelectItem>
+                <SelectItem value="name">名称</SelectItem>
+                <SelectItem value="documents">文档数</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
-      )}
+
+        {loadError ? (
+          <div className="m-3 flex flex-wrap items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+            <AlertCircle className="h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
+            <p className="min-w-0 flex-1 text-sm text-destructive">{loadError}</p>
+            <Button variant="outline" size="sm" onClick={() => void load()}>
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+              重试
+            </Button>
+          </div>
+        ) : !bases ? (
+          <div aria-busy="true">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="flex items-center gap-4 border-b border-line-1 px-4 py-3.5 last:border-b-0">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="ml-auto h-3 w-10" />
+                <Skeleton className="h-3 w-10" />
+                <Skeleton className="h-3 w-10" />
+              </div>
+            ))}
+          </div>
+        ) : visibleBases.length === 0 ? (
+          <div className="p-3">
+            <EmptyState
+              title={hasQuery ? `没有匹配「${query.trim()}」的知识库` : '还没有知识库'}
+              description={hasQuery ? '换个关键词，也可以清除筛选后重试。' : '先建一个库，再上传 .docx 文档。'}
+              action={
+                hasQuery ? (
+                  <Button variant="outline" size="sm" onClick={() => setQuery('')}>
+                    清除筛选
+                  </Button>
+                ) : (
+                  <Button size="sm" onClick={() => setCreateOpen(true)}>
+                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                    新建知识库
+                  </Button>
+                )
+              }
+            />
+          </div>
+        ) : (
+          <div>
+            <div className="hidden grid-cols-[minmax(0,1fr)_64px_80px_88px_96px_112px_40px] items-center gap-3 border-b border-line-1 bg-surface-2/60 px-4 py-2 text-xs font-medium text-fg-3 md:grid">
+              <span>名称</span>
+              <span className="text-right">文档</span>
+              <span className="text-right">切片</span>
+              <span className="text-right">授权用户</span>
+              <span>状态</span>
+              <span className="text-right">更新</span>
+              <span className="sr-only">操作</span>
+            </div>
+
+            <div className="divide-y divide-line-1">
+              {visibleBases.map((base) => {
+                const meta = STATUS_META[base.status];
+                return (
+                  <div
+                    key={base.kbId}
+                    className="ui-interactive ui-focus-row relative grid grid-cols-1 gap-2 px-4 py-3.5 hover:bg-surface-2/50 focus-within:bg-surface-2/70 md:grid-cols-[minmax(0,1fr)_64px_80px_88px_96px_112px_40px] md:items-center md:gap-3"
+                  >
+                    <div className="min-w-0 pr-12 md:pr-0">
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/admin/knowledge/${base.kbId}`}
+                          data-row-link
+                          className="truncate text-sm font-medium after:absolute after:inset-0 after:content-['']"
+                        >
+                          {base.name}
+                        </Link>
+                        <span className="md:hidden">
+                          <StatusBadge tone={meta.tone} label={meta.label} />
+                        </span>
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {base.description ?? '未填写描述'}
+                      </p>
+                      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground md:hidden">
+                        <span className="whitespace-nowrap font-mono tabular-nums">
+                          {formatCount(base.documentCount)} 份文档 · {chunkLabel(base.chunkCount)} 块
+                        </span>
+                        <span className="whitespace-nowrap font-mono tabular-nums">
+                          {formatCount(base.grantCount)} 人授权 · {formatDateTime(base.updatedAt)}
+                        </span>
+                      </p>
+                    </div>
+
+                    <span className="hidden text-right font-mono text-xs tabular-nums md:block">
+                      {formatCount(base.documentCount)}
+                    </span>
+                    <span className="hidden text-right font-mono text-xs tabular-nums md:block">
+                      {chunkLabel(base.chunkCount)}
+                    </span>
+                    <span className="hidden text-right font-mono text-xs tabular-nums md:block">
+                      {formatCount(base.grantCount)}
+                    </span>
+                    <span className="hidden md:block">
+                      <StatusBadge tone={meta.tone} label={meta.label} />
+                    </span>
+                    <span className="hidden text-right font-mono text-xs tabular-nums text-muted-foreground md:block">
+                      {formatDateTime(base.updatedAt)}
+                    </span>
+
+                    <div className="absolute right-1 top-1 z-10 flex justify-end md:relative md:right-auto md:top-auto md:justify-center">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-11 w-11 text-muted-foreground md:h-8 md:w-8"
+                            aria-label={`知识库「${base.name}」的更多操作`}
+                          >
+                            <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem onSelect={() => router.push(`/admin/knowledge/${base.kbId}?tab=grants`)}>
+                            授权用户
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => router.push(`/admin/knowledge/${base.kbId}?tab=settings`)}>
+                            设置
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onSelect={() => setDeleteTarget(base)}
+                          >
+                            删除
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
 
       <p className="text-xs leading-relaxed text-muted-foreground">
         切片策略：自动会识别目录，识别不到时按固定长度切；建库后可在设置里调整。

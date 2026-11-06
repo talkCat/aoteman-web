@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Aoteman Agent · 智能体工作台",
+  title: "灵犀 Lumi · 智能体工作台",
   description: "面向个人与开发者的 AI 智能体工作台：对话、工具调用、技能与过程追踪。",
 };
 
@@ -34,12 +34,14 @@ export default function RootLayout({
   );
 
   return (
-    <html lang="zh-CN" suppressHydrationWarning>
+    <html lang="zh-CN" suppressHydrationWarning className="dark">
       <head>
         <link
           rel="icon"
-          href={`data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>`}
+          href="/brand/lumi-mark.svg"
         />
+        <meta name="theme-color" content="#0a0a0d" media="(prefers-color-scheme: dark)" />
+        <meta name="theme-color" content="#f4f4f8" media="(prefers-color-scheme: light)" />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
@@ -47,7 +49,7 @@ export default function RootLayout({
         <Toaster />
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
+          defaultTheme="dark"
           enableSystem
           disableTransitionOnChange
         >

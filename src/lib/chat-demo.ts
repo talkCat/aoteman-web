@@ -1,5 +1,7 @@
+import type { AuthUser } from '@/lib/auth';
 import type { Message, Narration, Thinking, ToolUse } from '@/types/agent';
 import type { ExpertRef } from '@/types/knowledge';
+import { DEMO_ARTIFACT_MD_PATH, DEMO_ARTIFACT_PPTX_PATH } from '@/lib/artifact-demo';
 
 /**
  * 问答页静态演示数据。
@@ -9,6 +11,17 @@ import type { ExpertRef } from '@/types/knowledge';
  */
 
 export const CHAT_PREVIEW_STORAGE_KEY = 'aoteman-chat-preview';
+
+/** 预览身份：仅用于静态走查，不参与任何真实请求。 */
+export const CHAT_PREVIEW_USER: AuthUser = {
+  userId: 'u_preview',
+  username: 'preview',
+  displayName: '预览用户',
+  email: 'preview@aoteman.local',
+  status: 'ACTIVE',
+  roles: ['ADMIN'],
+  createdAt: Date.UTC(2026, 10, 1, 1, 0),
+};
 
 /** 与 expertSelection 的演示专家保持一致（exp_hr 是 DRAFT，问答页不可选）。 */
 const LEGAL_EXPERT: ExpertRef = {
@@ -127,6 +140,30 @@ export function buildDemoConversation(): DemoConversation {
       turnId: 1,
       seq: 3,
       timestamp: BASE + 3_000,
+    },
+    {
+      id: 'demo_tool2',
+      toolCallId: 'call_demo_2',
+      name: 'write_file',
+      input: JSON.stringify({ path: DEMO_ARTIFACT_MD_PATH }, null, 2),
+      output: 'ok',
+      type: 'tool',
+      status: 'success',
+      turnId: 1,
+      seq: 4,
+      timestamp: BASE + 4_000,
+    },
+    {
+      id: 'demo_tool3',
+      toolCallId: 'call_demo_3',
+      name: 'write_file',
+      input: JSON.stringify({ path: DEMO_ARTIFACT_PPTX_PATH }, null, 2),
+      output: 'ok',
+      type: 'tool',
+      status: 'success',
+      turnId: 2,
+      seq: 6,
+      timestamp: BASE + 5 * 60_000 + 4_000,
     },
   ];
 

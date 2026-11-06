@@ -103,16 +103,16 @@ export function UserGrantPicker({
 
   return (
     <div className="space-y-3">
-      <div className="rounded-lg border border-border">
+      <div className="rounded-lg border border-line-1 bg-surface-2/40">
         {value.length === 0 ? (
           <p className="px-4 py-8 text-center text-xs text-muted-foreground">{emptyHint}</p>
         ) : (
-          <ul className="divide-y divide-border/60">
+          <ul className="divide-y divide-line-1">
             {value.map((user) => (
               <li key={user.userId} className="flex items-center gap-3 px-3 py-2.5">
                 <span
                   aria-hidden="true"
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-medium text-primary"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-wash text-[11px] font-medium text-accent-base"
                 >
                   {initialOf(user.displayName)}
                 </span>
@@ -123,7 +123,7 @@ export function UserGrantPicker({
                     {user.roles.map((role) => (
                       <span
                         key={role}
-                        className="rounded border border-border/70 px-1 text-[10px] leading-4 text-muted-foreground"
+                        className="rounded border border-line-2 px-1 text-[10px] leading-4 text-fg-3"
                       >
                         {role}
                       </span>
@@ -172,7 +172,7 @@ export function UserGrantPicker({
                     >
                       <span
                         aria-hidden="true"
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-3 text-[10px] font-medium text-fg-3"
                       >
                         {initialOf(user.displayName)}
                       </span>

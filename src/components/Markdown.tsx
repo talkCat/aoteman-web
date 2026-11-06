@@ -71,12 +71,18 @@ export function Markdown({
   className,
   citations,
   onCitationClick,
+  headingAnchors,
 }: {
   content: string;
   className?: string;
   /** 本轮 agent.citation 快照。只有这里存在的 [K*] 才会渲染为可点击徽标。 */
   citations?: Citation[];
   onCitationClick?: (citation: Citation) => void;
+  /**
+   * 标题锚点：行号（1-based）→ DOM id。
+   * 只在产物画布的大纲里传入，聊天正文保持原样，不改变消息渲染结构。
+   */
+  headingAnchors?: ReadonlyMap<number, string>;
 }) {
   const citationMap = useMemo(() => {
     const map = new Map<string, Citation>();
@@ -89,9 +95,47 @@ export function Markdown({
     return [remarkGfm, [remarkCitations, { refs: Array.from(citationMap.keys()) }] as Pluggable];
   }, [citationMap]);
 
-  const components = useMemo<Components>(
-    () => ({
+  const components = useMemo<Components>(() => {
+    const anchorFor = (line?: number) => (line == null ? undefined : headingAnchors?.get(line));
+
+    return {
       ...baseComponents,
+      h1: ({ children, node }) => {
+        const id = anchorFor(node?.position?.start.line);
+        return (
+          <h1
+            id={id}
+            className={cn(
+              'mb-3 mt-5 text-lg font-semibold tracking-tight first:mt-0',
+              id && 'scroll-mt-20'
+            )}
+          >
+            {children}
+          </h1>
+        );
+      },
+      h2: ({ children, node }) => {
+        const id = anchorFor(node?.position?.start.line);
+        return (
+          <h2
+            id={id}
+            className={cn(
+              'mb-2.5 mt-5 text-base font-semibold tracking-tight first:mt-0',
+              id && 'scroll-mt-20'
+            )}
+          >
+            {children}
+          </h2>
+        );
+      },
+      h3: ({ children, node }) => {
+        const id = anchorFor(node?.position?.start.line);
+        return (
+          <h3 id={id} className={cn('mb-2 mt-4 text-sm font-semibold first:mt-0', id && 'scroll-mt-20')}>
+            {children}
+          </h3>
+        );
+      },
       a: ({ href, children }) => {
         const match = href?.match(/^#citation-(k\d+)$/i);
         if (match) {
@@ -112,9 +156,8 @@ export function Markdown({
           </a>
         );
       },
-    }),
-    [citationMap, onCitationClick],
-  );
+    };
+  }, [citationMap, onCitationClick, headingAnchors]);
 
   return (
     <div className={cn('text-sm leading-7 text-foreground', className)}>

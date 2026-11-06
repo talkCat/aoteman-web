@@ -70,12 +70,12 @@ export function PermissionCatalogTable({
 }) {
   if (loading) {
     return (
-      <div className="surface-raised overflow-hidden rounded-xl border border-border/70 bg-card" aria-busy="true">
+      <div aria-busy="true">
         {Array.from({ length: 6 }).map((_, index) => (
           <Skeleton
             key={index}
             className={cn(
-              'h-11 rounded-none border-b border-border/40 last:border-b-0',
+              'h-11 rounded-none border-b border-line-1 last:border-b-0',
               index % 2 === 1 && 'bg-muted/30',
             )}
           />
@@ -86,7 +86,7 @@ export function PermissionCatalogTable({
 
   if (items.length === 0) {
     return (
-      <div className="surface-raised rounded-xl border border-dashed border-border/70 bg-card px-6 py-10 text-center text-sm text-muted-foreground">
+      <div className="m-3 rounded-xl border border-dashed border-line-2 bg-surface-1/40 px-6 py-10 text-center text-sm text-muted-foreground">
         目录里还没有工具。
       </div>
     );
@@ -94,7 +94,7 @@ export function PermissionCatalogTable({
 
   return (
     <>
-      <div className="surface-raised hidden overflow-hidden rounded-xl border border-border/70 bg-card md:block">
+      <div className="hidden overflow-hidden md:block">
         <Table className="table-fixed text-[13px]" aria-label="工具权限目录">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -109,7 +109,7 @@ export function PermissionCatalogTable({
             {items.map((item) => (
               <TableRow
                 key={item.toolName}
-                className={cn('h-11', !item.configurable && 'bg-muted/20 hover:bg-muted/30')}
+                className={cn('h-11', !item.configurable && 'bg-surface-2/40 hover:bg-surface-2/60')}
               >
                 <TableCell className="px-3 py-2.5">
                   <span
@@ -144,11 +144,11 @@ export function PermissionCatalogTable({
         </Table>
       </div>
 
-      <ul className="surface-raised divide-y divide-border/70 overflow-hidden rounded-xl border border-border/70 bg-card md:hidden">
+      <ul className="divide-y divide-line-1 md:hidden">
         {items.map((item) => (
           <li
             key={item.toolName}
-            className={cn('space-y-2 p-3', !item.configurable && 'bg-muted/20')}
+            className={cn('space-y-2 p-3', !item.configurable && 'bg-surface-2/40')}
           >
             <div className="flex items-start justify-between gap-2">
               <code className="min-w-0 break-all font-mono text-[12.5px] leading-snug">

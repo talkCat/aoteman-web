@@ -1,11 +1,10 @@
-﻿import type { Citation } from '@/types/citation';
+import type { Citation } from '@/types/citation';
 
 /**
  * 知识库与专家模型的共享类型。
  *
  * 依据：aoteman-web/doc/plans/2026-11-04-知识库与专家模型前端任务拆解.md §2。
- * 当前阶段页面使用 src/lib/knowledge-demo.ts 的静态数据，字段与控制面契约保持一致，
- * 后续接 BFF 时只替换数据来源，不改类型与组件。
+ * 页面数据统一来自控制面（经同源 BFF `/api/**` 代理），字段与控制面契约保持一致。
  */
 
 export type KnowledgeBaseStatus = 'ACTIVE' | 'DISABLED' | 'DELETED';

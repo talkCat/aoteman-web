@@ -3,7 +3,6 @@
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Bot,
   ChevronDown,
   Eye,
   EyeOff,
@@ -23,6 +22,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { BrandWordmark } from "@/components/BrandWordmark";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 type DemoAccount = { username: string; password: string };
@@ -154,10 +154,7 @@ export default function LoginPage() {
         />
 
         <div className="relative flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Bot className="h-5 w-5" />
-          </div>
-          <span className="text-base font-semibold tracking-tight">aoteman</span>
+          <BrandWordmark large />
         </div>
 
         <div className="relative max-w-md">
@@ -173,7 +170,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <div className="relative text-xs text-muted-foreground">© 2026 aoteman</div>
+        <div className="relative text-xs text-muted-foreground">© 2026 灵犀 Lumi</div>
       </aside>
 
       {/* 右：登录表单 */}
@@ -185,10 +182,7 @@ export default function LoginPage() {
         <div className="flex flex-1 items-center justify-center px-5 py-12">
           <div className="w-full max-w-sm">
             <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Bot className="h-4 w-4" />
-              </div>
-              <span className="text-sm font-semibold tracking-tight">aoteman</span>
+              <BrandWordmark />
             </div>
 
             <h1 className="text-2xl font-semibold tracking-tight">登录</h1>

@@ -12,3 +12,8 @@ token.txt
 check.cjs
 bun.lock
 pnpm-lock.yaml
+
+# 本地验证产物（截图脚本 / Chrome profile / 生产构建备份），不参与版本控制
+/tmp/
+/.tmp-upload/
+/.next-prod-build/

@@ -50,11 +50,11 @@ export function SkillCard({
   const disabled = busy || adminBusy;
 
   return (
-    <article className="ui-interactive flex min-h-[196px] min-w-0 flex-col bg-card hover:bg-accent/10">
+    <article className="admin-skill-card ui-interactive min-w-0">
       <div className="flex flex-1 flex-col gap-2.5 p-4">
         <div className="flex items-start gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-            <Package className="h-4 w-4" aria-hidden="true" />
+          <span className="admin-stat-icon h-9 w-9 shrink-0 rounded-[10px]" aria-hidden="true">
+            <Package className="h-4 w-4" />
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -82,7 +82,7 @@ export function SkillCard({
         </p>
       </div>
 
-      <div className="flex items-center justify-between gap-2 border-t border-border/60 px-4 py-2.5">
+      <div className="flex items-center justify-between gap-2 border-t border-line-1 px-4 py-2.5">
         <span className="text-[11px] text-muted-foreground">
           {skill.installed ? '已安装 · 下一轮可见' : '未安装'}
         </span>
@@ -140,7 +140,7 @@ export function SkillCard({
       </div>
 
       {isAdmin && (
-        <div className="flex items-center gap-1 border-t border-border/60 bg-muted/20 px-2 py-1.5">
+        <div className="flex items-center gap-1 border-t border-line-1 bg-surface-2/50 px-2 py-1.5">
           <Button
             variant="ghost"
             size="sm"

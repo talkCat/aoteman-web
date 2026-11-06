@@ -69,7 +69,7 @@ export function ExpertKnowledgePicker({
 
   return (
     <div className="space-y-3">
-      <div className="rounded-lg border border-border">
+      <div className="rounded-lg border border-line-1 bg-surface-2/40">
         {value.length === 0 ? (
           <div className="flex flex-col items-center gap-1.5 px-4 py-10 text-center">
             <LibraryBig className="h-5 w-5 text-muted-foreground/60" aria-hidden="true" />
@@ -77,10 +77,10 @@ export function ExpertKnowledgePicker({
             <p className="text-xs text-muted-foreground">不关联也可以保存，但专家只能凭提示词回答。</p>
           </div>
         ) : (
-          <ul className="divide-y divide-border/60">
+          <ul className="divide-y divide-line-1">
             {value.map((binding, index) => (
               <li key={binding.kbId} className="flex items-center gap-3 px-3 py-2.5">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-primary/10 font-mono text-[11px] tabular-nums text-primary">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-accent-wash font-mono text-[11px] tabular-nums text-accent-base">
                   {index + 1}
                 </span>
                 <div className="min-w-0 flex-1">

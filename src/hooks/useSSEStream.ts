@@ -420,6 +420,8 @@ export function useSSEStream(
           status: 'pending',
           turnId,
           seq: toPersistedSeq(data.seq),
+          // 落盘时间即工具真实开始时间；缺失时退化为前端接收时刻
+          startedAt: data.createdAt ?? Date.now(),
         };
         if (isSkill) {
           callbacksRef.current.onSkillUse?.(toolUse);
@@ -461,6 +463,8 @@ export function useSSEStream(
           type: isSkill ? 'skill' : 'tool',
           turnId,
           seq: toPersistedSeq(data.seq),
+          // 结果落盘时间即工具真实结束时间
+          finishedAt: data.createdAt ?? Date.now(),
         };
         if (isSkill) {
           callbacksRef.current.onSkillResult?.(toolResult);

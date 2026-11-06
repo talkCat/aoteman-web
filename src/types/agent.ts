@@ -99,6 +99,9 @@ export interface ToolUse {
   /** 持久化事件序号，用于与中间叙述一起按轮次内时序排列 */
   seq?: number;
   timestamp?: number;
+  /** 工具调用开始 / 结束的落盘时间（毫秒）。仅用于展示真实耗时，缺失则不展示。 */
+  startedAt?: number;
+  finishedAt?: number;
 }
 
 // 工具确认类型

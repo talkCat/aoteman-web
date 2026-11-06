@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { apiErrorMessage, listUserExperts as fetchUserExperts } from '@/lib/knowledge-api';
-import { listUserExperts as listDemoUserExperts } from '@/lib/user-experts';
 import type { UserExpertSummary } from '@/types/knowledge';
 
 export const MAX_EXPERTS = 5;
@@ -27,10 +26,9 @@ function readStoredIds(key: string): string[] {
  * 选择只影响下一轮：记忆到 localStorage['aoteman:experts:' + userId]，
  * 进入页面时与「已发布且已授权」列表求交集；被移除的专家静默丢弃并提示一次。
  *
- * 真实模式请求 GET /api/experts（控制面已按 ACTIVE + 授权过滤）；?preview=1 的
- * 静态预览继续使用 src/lib/user-experts.ts 的演示数据。
+ * 请求 GET /api/experts（控制面已按 ACTIVE + 授权过滤）。
  */
-export function useExpertSelection(userId: string, isAdmin: boolean, demoMode = false) {
+export function useExpertSelection(userId: string) {
   const [experts, setExperts] = useState<UserExpertSummary[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
@@ -65,9 +63,7 @@ export function useExpertSelection(userId: string, isAdmin: boolean, demoMode = 
 
     async function load() {
       try {
-        const available = demoMode
-          ? listDemoUserExperts(userId, isAdmin)
-          : await fetchUserExperts();
+        const available = await fetchUserExperts();
         if (cancelled || requestRef.current !== requestId) return;
 
         setExperts(available);
@@ -99,7 +95,7 @@ export function useExpertSelection(userId: string, isAdmin: boolean, demoMode = 
     return () => {
       cancelled = true;
     };
-  }, [userId, isAdmin, storageKey, demoMode, reloadToken]);
+  }, [userId, storageKey, reloadToken]);
 
   useEffect(() => {
     if (!ready || !persistRef.current || !storageKey || typeof window === 'undefined') return;

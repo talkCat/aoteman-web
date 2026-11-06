@@ -6,7 +6,7 @@
  * - GET  /api/artifacts/content?userId=&sessionId=&workspacePath=&download=
  * - HEAD /api/artifacts/content?userId=&sessionId=&workspacePath=
  *
- * 本轮只落地 Markdown（.md/.markdown），
+ * 本轮落地 Markdown 在线预览（.md/.markdown）与 PPTX 下载（.pptx），
  * 见 doc/design/2026-10-15 智能体产物预览与沙箱适配设计.md §15。
  */
 import type { ToolUse } from '@/types/agent';
@@ -25,6 +25,16 @@ export interface ArtifactItem {
   modifiedAt: number;
 }
 
+export type ArtifactKind = 'markdown' | 'pptx' | 'other';
+
+/** 本期画布可识别的产物类型：Markdown 渲染正文，PPTX 只做文件信息 + 下载。 */
+export function artifactKind(workspacePath: string): ArtifactKind {
+  const name = artifactFileName(workspacePath).toLowerCase();
+  if (name.endsWith('.md') || name.endsWith('.markdown')) return 'markdown';
+  if (name.endsWith('.pptx')) return 'pptx';
+  return 'other';
+}
+
 /** 会落盘产出业务的写入类工具。 */
 const WRITE_TOOLS = new Set(['write_file', 'edit_file']);
 
@@ -34,7 +44,7 @@ function withUser(userId: string, sessionId?: string): URLSearchParams {
   return params;
 }
 
-/** 列出当前用户工作区内的 Markdown 产物元数据（服务端已按最后修改时间倒序）。 */
+/** 列出当前用户工作区内的 Markdown / PPTX 产物元数据（服务端已按最后修改时间倒序）。 */
 export async function fetchArtifacts(
   userId: string,
   sessionId?: string,
@@ -103,11 +113,11 @@ function normalizePath(path: string): string {
     .toLowerCase();
 }
 
-/** 是否为「会产出 Markdown 的写入工具调用」（write_file / edit_file + .md/.markdown）。 */
-export function isMarkdownArtifactWrite(toolUse: ToolUse): boolean {
+/** 是否为「会产出可预览文件的写入工具调用」（write_file / edit_file + .md/.markdown/.pptx）。 */
+export function isArtifactWrite(toolUse: ToolUse): boolean {
   if (!WRITE_TOOLS.has(toolUse.name)) return false;
   const path = parseToolPath(toolUse.input);
-  return Boolean(path && /\.(md|markdown)$/i.test(path));
+  return Boolean(path && /\.(md|markdown|pptx)$/i.test(path));
 }
 
 /**
@@ -119,7 +129,7 @@ export function isMarkdownArtifactWrite(toolUse: ToolUse): boolean {
 export function matchTurnArtifacts(toolUses: ToolUse[], all: ArtifactItem[]): ArtifactItem[] {
   const wanted: string[] = [];
   toolUses.forEach(toolUse => {
-    if (!isMarkdownArtifactWrite(toolUse)) return;
+    if (!isArtifactWrite(toolUse)) return;
     const path = parseToolPath(toolUse.input);
     if (!path) return;
     const normalized = normalizePath(path);

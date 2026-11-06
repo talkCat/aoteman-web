@@ -172,23 +172,23 @@ export function PermissionRuleList({
   }
 
   return (
-    <section aria-labelledby="permission-rules-heading" className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h2 id="permission-rules-heading" className="text-sm font-semibold tracking-tight">
+    <section aria-labelledby="permission-rules-heading" className="admin-panel">
+      <div className="admin-panel-bar">
+        <div className="min-w-0">
+          <h2 id="permission-rules-heading" className="admin-panel-title">
             我的规则
           </h2>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="admin-panel-subtitle">
             只对当前账号生效；规则只收紧、不放宽，同一工具重复保存即覆盖。
           </p>
         </div>
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
           {refreshing && <Loader2 className="h-3 w-3 animate-spin" aria-label="正在刷新规则" />}
           {rules.length} 条规则
         </span>
       </div>
 
-      <div className="surface-raised overflow-hidden rounded-xl border border-border/70 bg-card">
+      <div>
         <form className="space-y-4 p-4 sm:p-5" onSubmit={handleSubmit}>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.9fr)_auto] lg:items-end">
             <div className="min-w-0 space-y-1.5">
@@ -235,7 +235,7 @@ export function PermissionRuleList({
                 className="grid grid-cols-2 gap-2"
                 disabled={submitting}
               >
-                <div className="flex items-start gap-2 rounded-md border border-border/70 bg-background p-2.5">
+                <div className="flex items-start gap-2 rounded-md border border-line-1 bg-surface-2/50 p-2.5">
                   <RadioGroupItem
                     value="ask"
                     id="permission-behavior-ask"
@@ -253,7 +253,7 @@ export function PermissionRuleList({
                     </p>
                   </div>
                 </div>
-                <div className="flex items-start gap-2 rounded-md border border-border/70 bg-background p-2.5">
+                <div className="flex items-start gap-2 rounded-md border border-line-1 bg-surface-2/50 p-2.5">
                   <RadioGroupItem
                     value="deny"
                     id="permission-behavior-deny"
@@ -274,7 +274,11 @@ export function PermissionRuleList({
               </RadioGroup>
             </fieldset>
 
-            <Button type="submit" className="h-10 w-full lg:w-auto" disabled={submitting || !toolName}>
+            <Button
+              type="submit"
+              className="h-10 w-full lg:w-auto"
+              disabled={submitting || !toolName}
+            >
               {submitting ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               ) : (
@@ -295,8 +299,8 @@ export function PermissionRuleList({
           )}
         </form>
 
-        <div className="border-t border-border/70">
-          <div className="flex items-center justify-between gap-2 bg-muted/20 px-4 py-2 sm:px-5">
+        <div className="border-t border-line-1">
+          <div className="flex items-center justify-between gap-2 bg-surface-2/50 px-4 py-2 sm:px-5">
             <span className="text-[11px] font-medium text-muted-foreground">已生效规则</span>
             <span className="text-[11px] text-muted-foreground">下一轮对话生效</span>
           </div>
@@ -306,7 +310,7 @@ export function PermissionRuleList({
               {Array.from({ length: 3 }).map((_, index) => (
                 <Skeleton
                   key={index}
-                  className="h-12 rounded-none border-b border-border/40 last:border-b-0"
+                  className="h-12 rounded-none border-b border-line-1 last:border-b-0"
                 />
               ))}
             </div>
@@ -331,11 +335,11 @@ export function PermissionRuleList({
           ) : (
             <>
               {error && (
-                <p role="alert" className="border-b border-border/60 bg-destructive/5 px-4 py-2 text-xs text-destructive sm:px-5">
+                <p role="alert" className="border-b border-line-1 bg-destructive/5 px-4 py-2 text-xs text-destructive sm:px-5">
                   {error}
                 </p>
               )}
-              <ul className="divide-y divide-border/70">
+              <ul className="divide-y divide-line-1">
                 {rules.map((rule) => (
                   <li
                     key={rule.ruleId}
