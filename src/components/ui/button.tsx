@@ -13,9 +13,9 @@ const buttonVariants = cva(
         destructive:
           "ui-pressable bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline:
-          "ui-pressable border border-input bg-card shadow-[0_1px_1px_rgb(16_24_40/0.03)] hover:bg-accent hover:text-accent-foreground",
+          "ui-pressable border border-line-2 bg-surface-2 text-fg-2 hover:bg-surface-3 hover:text-fg-1",
         secondary:
-          "ui-pressable bg-secondary text-secondary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.35)] hover:bg-secondary/80",
+          "ui-pressable bg-surface-3 text-fg-2 shadow-[inset_0_1px_0_rgb(255_255_255/0.35)] hover:bg-surface-3/80 hover:text-fg-1",
         ghost: "ui-pressable hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
       },

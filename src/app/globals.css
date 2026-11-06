@@ -6,7 +6,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-geist-sans), "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -39,6 +39,24 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
 
+  /* 语义层直接暴露给 Tailwind：bg-surface-* / border-line-* / text-fg-* */
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-inset: var(--surface-inset);
+  --color-line-1: var(--line-1);
+  --color-line-2: var(--line-2);
+  --color-line-3: var(--line-3);
+  --color-fg-1: var(--text-1);
+  --color-fg-2: var(--text-2);
+  --color-fg-3: var(--text-3);
+  --color-fg-4: var(--text-4);
+  --color-accent-base: var(--accent-base);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-wash: var(--accent-wash);
+  --color-accent-line: var(--accent-line);
+
   --color-skill: var(--skill);
   --color-tool: var(--tool);
   --color-thinking: var(--thinking);
@@ -59,96 +77,158 @@
   --shadow-float: 0 10px 32px rgb(0 0 0 / 0.12);
 }
 
+/* ==========================================================================
+   设计令牌 · 亮度分层 + 单一强调色
+   依据：doc/plans/2026-11-05-整体UI交互风格切换调整计划.md（P1）
+   原则：层级用亮度区分，不同时叠加「边框 + 阴影 + 分割线」；全站只有一个主色。
+         shadcn 变量名保持不变，只换值与来源，避免 60+ 个 ui/* 组件逐个改。
+   ========================================================================== */
+
 :root {
-  --radius: 0.625rem;
+  /* 圆角：14px 基准派生 10 / 12 / 14 / 18 / 22 */
+  --radius: 0.875rem;
+  --radius-xs: 6px;
+  --sidebar-width: 292px;
+  --w-chat: 344px;
+  --w-content: 720px;
+
+  /* 亮度分层（浅色 4 档 + 凹陷） */
+  --surface-0: #f4f4f8;
+  --surface-1: #ffffff;
+  --surface-2: #eeeef4;
+  --surface-3: #e6e6ee;
+  --surface-inset: #f2f2f6;
+  /* 页面纵深：自上而下压暗一档，与顶部环境光叠出「有远处、有近处」的空间 */
+  --surface-deep: #ececf2;
+  /* 侧栏 / 顶栏玻璃：上亮下暗的同色渐变，靠亮度而非描边分层 */
+  --panel-top: #ffffff;
+  --panel-bottom: #fafafd;
+
+  /* 描边只有 3 档，永不用实色灰 */
+  --line-1: rgba(17, 18, 28, 0.07);
+  --line-2: rgba(17, 18, 28, 0.12);
+  --line-3: rgba(17, 18, 28, 0.18);
+
+  /* 文本 4 档 */
+  --text-1: #14141b;
+  --text-2: #3b3b49;
+  --text-3: #6b6b7d;
+  --text-4: #9a9aab;
+
+  /* 强调色：只有一个主色（浅色下压暗以保证 ≥ 4.5:1） */
+  --accent-base: #5b3fe0;
+  --accent-soft: #7c5cff;
+  --accent-wash: rgba(124, 92, 255, 0.1);
+  --accent-line: rgba(124, 92, 255, 0.26);
+
+  /* 光：环境光与焦点光，代替重阴影 */
+  --glow-ambient: rgba(124, 92, 255, 0.11);
+  /* 三处环境光：顶部主色 + 右上青色 + 左下粉色，只做空间暗示，不参与信息层级 */
+  --ambient-a: rgba(124, 92, 255, 0.1);
+  --ambient-b: rgba(34, 211, 238, 0.05);
+  --ambient-c: rgba(244, 114, 182, 0.04);
+  --glow-focus: 0 0 0 2px var(--surface-0), 0 0 0 4px rgba(124, 92, 255, 0.4);
+
+  /* ---- shadcn 语义映射（组件只认这一层） ---- */
+  --background: var(--surface-0);
+  --foreground: var(--text-1);
+  --card: var(--surface-1);
+  --card-foreground: var(--text-1);
+  --popover: var(--surface-1);
+  --popover-foreground: var(--text-1);
+  --primary: var(--accent-base);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--text-2);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--text-3);
+  --accent: var(--surface-2);
+  --accent-foreground: var(--text-1);
+  --destructive: #d92d20;
+  --destructive-foreground: #ffffff;
+  --border: var(--line-1);
+  --input: var(--line-2);
+  --ring: var(--accent-soft);
+
+  --skill: var(--accent-base);
+  --tool: var(--text-3);
+  --thinking: #7c5cff;
+  --success: #0f9d58;
+  --warning: #b45309;
+
+  --chart-1: #7c5cff;
+  --chart-2: #22d3ee;
+  --chart-3: #5ed6a4;
+  --chart-4: #fbbf24;
+  --chart-5: #f472b6;
+
+  --sidebar: var(--surface-1);
+  --sidebar-foreground: var(--text-1);
+  --sidebar-primary: var(--accent-base);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--surface-2);
+  --sidebar-accent-foreground: var(--text-1);
+  --sidebar-border: var(--line-1);
+  --sidebar-ring: var(--accent-soft);
+
+  /* 阴影：浅色下只给浮层用，卡片不靠阴影立起来 */
+  --shadow-soft: 0 1px 2px rgba(17, 18, 28, 0.05);
+  --shadow-card: 0 1px 2px rgba(17, 18, 28, 0.04), 0 8px 24px -12px rgba(17, 18, 28, 0.12);
+  --shadow-float: 0 12px 32px -12px rgba(17, 18, 28, 0.18), 0 2px 8px rgba(17, 18, 28, 0.06);
+
+  /* 动效：4 组缓动 + 5 档时长，不要第五个缓动 */
   --ui-motion-duration: 120ms;
   --ui-motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-
-  --background: oklch(0.972 0.002 220);
-  --foreground: oklch(0.19 0.008 220);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.19 0.008 220);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.19 0.008 220);
-  --primary: oklch(0.5 0.09 195);
-  --primary-foreground: oklch(0.985 0.003 195);
-  --secondary: oklch(0.965 0.004 220);
-  --secondary-foreground: oklch(0.25 0.012 220);
-  --muted: oklch(0.965 0.004 220);
-  --muted-foreground: oklch(0.5 0.012 220);
-  --accent: oklch(0.945 0.006 200);
-  --accent-foreground: oklch(0.22 0.012 220);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.91 0.005 220);
-  --input: oklch(0.91 0.005 220);
-  --ring: oklch(0.62 0.08 196);
-
-  --skill: oklch(0.5 0.09 195);
-  --tool: oklch(0.55 0.012 220);
-  --thinking: oklch(0.55 0.035 300);
-  --success: oklch(0.55 0.13 152);
-  --warning: oklch(0.66 0.13 78);
-
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.5 0.09 195);
-  --sidebar-primary-foreground: oklch(0.985 0.003 195);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-expo: cubic-bezier(0.4, 0, 1, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  --t-tap: 120ms;
+  --t-small: 200ms;
+  --t-panel: 280ms;
+  --t-layout: 560ms;
+  --t-enter: 760ms;
 }
 
 .dark {
-  --background: oklch(0.145 0.007 220);
-  --foreground: oklch(0.96 0.004 210);
-  --card: oklch(0.21 0.008 220);
-  --card-foreground: oklch(0.96 0.004 210);
-  --popover: oklch(0.235 0.008 220);
-  --popover-foreground: oklch(0.96 0.004 210);
-  --primary: oklch(0.75 0.11 191);
-  --primary-foreground: oklch(0.16 0.02 200);
-  --secondary: oklch(0.255 0.009 220);
-  --secondary-foreground: oklch(0.96 0.004 210);
-  --muted: oklch(0.25 0.009 220);
-  --muted-foreground: oklch(0.68 0.012 210);
-  --accent: oklch(0.285 0.01 215);
-  --accent-foreground: oklch(0.96 0.004 210);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 14%);
-  --input: oklch(1 0 0 / 20%);
-  --ring: oklch(0.62 0.08 196);
+  /* 亮度分层（深色 5 档，每档差 3~6 个 L 值） */
+  --surface-0: #0a0a0d;
+  --surface-1: #0d0d10;
+  --surface-2: #111114;
+  --surface-3: #17171c;
+  --surface-inset: #0b0b10;
+  --surface-deep: #08080b;
+  --panel-top: rgba(22, 22, 30, 0.92);
+  --panel-bottom: rgba(12, 12, 16, 0.95);
 
-  --skill: oklch(0.75 0.11 191);
-  --tool: oklch(0.7 0.012 220);
-  --thinking: oklch(0.72 0.03 300);
-  --success: oklch(0.72 0.15 152);
-  --warning: oklch(0.76 0.14 78);
+  --line-1: rgba(255, 255, 255, 0.06);
+  --line-2: rgba(255, 255, 255, 0.1);
+  --line-3: rgba(255, 255, 255, 0.16);
 
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.75 0.11 191);
-  --sidebar-primary-foreground: oklch(0.16 0.02 200);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 14%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --text-1: #e9e9f0;
+  --text-2: #c3c3d4;
+  --text-3: #9b9bad;
+  --text-4: #6b6b7c;
 
-  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.3);
-  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.28), 0 8px 24px -8px rgb(0 0 0 / 0.5);
-  --shadow-float: 0 16px 40px -12px rgb(0 0 0 / 0.62), 0 2px 8px rgb(0 0 0 / 0.3);
+  --accent-base: #7c5cff;
+  --accent-soft: #a78bfa;
+  --accent-wash: rgba(124, 92, 255, 0.12);
+  --accent-line: rgba(124, 92, 255, 0.28);
+
+  --glow-ambient: rgba(124, 92, 255, 0.17);
+  --ambient-a: rgba(124, 92, 255, 0.26);
+  --ambient-b: rgba(34, 211, 238, 0.1);
+  --ambient-c: rgba(244, 114, 182, 0.08);
+  --glow-focus: 0 0 0 2px var(--surface-1), 0 0 0 4px rgba(124, 92, 255, 0.55);
+
+  --popover: var(--surface-2);
+  --destructive: #f97066;
+  --success: #5ed6a4;
+  --warning: #fbbf24;
+
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.28), 0 8px 24px -8px rgba(0, 0, 0, 0.5);
+  --shadow-float: 0 18px 40px -18px rgba(0, 0, 0, 0.9);
 }
 
 @layer base {
@@ -160,11 +240,14 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    background-image: radial-gradient(
-      1200px 520px at 50% -240px,
-      color-mix(in oklab, var(--primary) 7%, transparent),
-      transparent 72%
-    );
+    /* 环境光 + 纵向压暗：全站唯一的一处「光」，强度由 token 按主题给。
+       两层缺一不可——只有光会发灰，只有压暗会死板（原型 chat-page 同款配方）。 */
+    background-image:
+      radial-gradient(1000px 620px at 50% -16%, var(--ambient-a), transparent 70%),
+      radial-gradient(720px 720px at 104% 2%, var(--ambient-b), transparent 72%),
+      radial-gradient(680px 680px at -6% 102%, var(--ambient-c), transparent 72%),
+      linear-gradient(180deg, var(--surface-0), var(--surface-deep) 70%);
+    background-repeat: no-repeat;
     background-attachment: fixed;
   }
 
@@ -176,20 +259,158 @@
 }
 
 @layer components {
-  /* 页面环境光：极淡的主色径向渐变，给平面背景一点纵深，不新增色板 */
+  /* 画布不再自带背景：环境光只由 body 提供一次，避免两层渐变叠成灰雾 */
   .app-canvas {
-    background-color: var(--background);
-    background-image: radial-gradient(
-      1200px 520px at 50% -240px,
-      color-mix(in oklab, var(--primary) 7%, transparent),
-      transparent 72%
+    background-color: transparent;
+  }
+
+  /* 侧栏：比画布亮一档，用亮度而非描边区分中间层 */
+  .surface-sidebar {
+    background-color: var(--surface-1);
+    background-image: linear-gradient(180deg, var(--panel-top), var(--panel-bottom));
+    box-shadow: inset -1px 0 0 var(--line-1);
+    -webkit-backdrop-filter: blur(18px) saturate(120%);
+    backdrop-filter: blur(18px) saturate(120%);
+  }
+
+  /* 顶栏：半透明玻璃，滚动内容从下方透出，让画布「继续往上长」 */
+  .glass-bar {
+    background-color: color-mix(in oklab, var(--surface-0) 78%, transparent);
+    background-image: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--surface-0) 90%, transparent),
+      color-mix(in oklab, var(--surface-0) 58%, transparent)
+    );
+    -webkit-backdrop-filter: blur(16px) saturate(120%);
+    backdrop-filter: blur(16px) saturate(120%);
+  }
+
+  /* 底部输入区：原型用「透明 → 实底」的渐变托盘承托输入框，不画硬分割线，
+     这样思考态的光才能自然漏到消息区，而不是被一条 border 截断。 */
+  .chat-composer-dock {
+    position: relative;
+    z-index: 20;
+    isolation: isolate;
+    background-image: linear-gradient(
+      180deg,
+      transparent,
+      color-mix(in oklab, var(--surface-0) 78%, transparent) 24%,
+      var(--surface-0) 66%
     );
   }
 
-  /* 侧栏：比画布亮一档，作为独立的中间层 */
-  .surface-sidebar {
-    background-color: color-mix(in oklab, var(--card) 72%, var(--background));
-    box-shadow: inset -1px 0 0 color-mix(in oklab, var(--border) 70%, transparent);
+  /* 思考态背景发光：整块输入区被彩色光雾点亮（原型 02 的大面积外发光） */
+  .chat-composer-dock::before {
+    content: "";
+    position: absolute;
+    inset: -46px -24px 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0;
+    background-image:
+      radial-gradient(62% 118% at 34% 100%, rgb(124 92 255 / 0.16), transparent 70%),
+      radial-gradient(54% 108% at 68% 100%, rgb(34 211 238 / 0.1), transparent 72%),
+      radial-gradient(40% 84% at 54% 100%, rgb(244 114 182 / 0.07), transparent 74%);
+    transition: opacity 480ms var(--ease-out-expo);
+  }
+
+  .dark .chat-composer-dock::before {
+    background-image:
+      radial-gradient(62% 118% at 34% 100%, rgb(124 92 255 / 0.3), transparent 70%),
+      radial-gradient(54% 108% at 68% 100%, rgb(34 211 238 / 0.19), transparent 72%),
+      radial-gradient(40% 84% at 54% 100%, rgb(244 114 182 / 0.12), transparent 74%);
+  }
+
+  .chat-composer-dock:has(.composer-thinking)::before {
+    opacity: 1;
+    animation: dock-glow-breathe 6s ease-in-out infinite alternate;
+  }
+
+  /* 输入区：全站唯一「浮起来」的东西——实心底 + 顶部内高光 + 远落影 */
+  .composer-surface {
+    background-color: var(--surface-1);
+    background-image: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--surface-1) 92%, var(--surface-3)),
+      var(--surface-1)
+    );
+    box-shadow:
+      0 0 0 1px var(--line-2),
+      inset 0 1px 0 rgb(255 255 255 / 0.7),
+      0 2px 6px -2px rgb(16 24 40 / 0.06),
+      0 24px 48px -26px rgb(16 24 40 / 0.26);
+  }
+
+  .dark .composer-surface {
+    background-image: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--surface-2) 80%, var(--surface-3)),
+      var(--surface-1)
+    );
+    box-shadow:
+      0 0 0 1px var(--line-2),
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      0 26px 64px -30px rgb(0 0 0 / 0.95);
+  }
+
+  /* 内容层必须是实色：思考态的彩光只能留在 1px 描边上，不能透进正文 */
+  .composer-inner {
+    position: relative;
+    border-radius: inherit;
+    background-color: var(--surface-1);
+    background-image: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--surface-1) 96%, var(--surface-2)),
+      var(--surface-1)
+    );
+  }
+
+  .dark .composer-inner {
+    background-color: var(--surface-1);
+    background-image: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--surface-1) 88%, var(--surface-2)),
+      var(--surface-1)
+    );
+  }
+
+  /* ---- 亮度分层原子（P1 起统一用这三档，不再新建色板） ---- */
+  .surface-1 {
+    background-color: var(--surface-1);
+  }
+
+  .surface-2 {
+    background-color: var(--surface-2);
+  }
+
+  .surface-3 {
+    background-color: var(--surface-3);
+  }
+
+  .fg-1 { color: var(--text-1); }
+  .fg-2 { color: var(--text-2); }
+  .fg-3 { color: var(--text-3); }
+  .fg-4 { color: var(--text-4); }
+
+  /* 细分隔线：只有需要「可比较的行」时才画，且只用最弱一档 */
+  .hairline-b {
+    box-shadow: inset 0 -1px 0 var(--line-1);
+  }
+
+  /* 卡片：深色靠内高光提起来，浅色靠极弱描边，两者都不叠粗边框 */
+  .card-elevated {
+    background-color: var(--surface-1);
+    box-shadow:
+      0 0 0 1px var(--line-1),
+      0 1px 2px rgb(16 24 40 / 0.04),
+      0 14px 28px -22px rgb(16 24 40 / 0.28);
+  }
+
+  .dark .card-elevated {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.045),
+      0 1px 2px rgb(0 0 0 / 0.3),
+      0 14px 28px -22px rgb(0 0 0 / 0.6);
   }
 
   /* 凸起表面：顶部 1px 内高光 + 极短落影，用于内容容器 */
@@ -227,6 +448,128 @@
 
   .dark .surface-chip {
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  }
+
+  /* Hero：标题第二行渐变 + 就绪徽标的呼吸点，都用 token，不写死颜色 */
+  .hero-gradient-text {
+    background-image: linear-gradient(
+      100deg,
+      color-mix(in oklab, var(--accent-soft) 82%, var(--text-1)),
+      var(--accent-base) 46%,
+      color-mix(in oklab, var(--accent-soft) 65%, var(--text-4))
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* P4：页头 3D 主视觉。素材统一在 /public/brand，环境光用主色 token，
+     浅色下降低落影强度，避免贴图在浅底上显得发灰。 */
+  .brand-art-frame {
+    position: relative;
+    display: grid;
+    place-items: center;
+  }
+
+  .brand-art-glow {
+    position: absolute;
+    inset: 50% auto auto 50%;
+    width: 150px;
+    height: 150px;
+    transform: translate(-50%, -50%);
+    border-radius: 999px;
+    background: radial-gradient(
+      50% 50% at 50% 50%,
+      color-mix(in oklab, var(--accent-base) 26%, transparent),
+      transparent 70%
+    );
+    filter: blur(8px);
+  }
+
+  .dark .brand-art-glow {
+    background: radial-gradient(
+      50% 50% at 50% 50%,
+      color-mix(in oklab, var(--accent-base) 42%, transparent),
+      color-mix(in oklab, var(--accent-base) 10%, transparent) 55%,
+      transparent 72%
+    );
+  }
+
+  .brand-art {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    width: 100%;
+    object-fit: contain;
+    filter: drop-shadow(0 10px 18px rgb(17 18 28 / 0.16));
+  }
+
+  .dark .brand-art {
+    filter: drop-shadow(0 18px 26px rgb(0 0 0 / 0.5));
+  }
+
+  @keyframes brand-art-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-6px);
+    }
+  }
+
+  .brand-art-float {
+    animation: brand-art-float 7s var(--ease-standard) infinite;
+  }
+
+  /* 页头标题渐变：深色下用「近白 → 淡紫 → 淡青」，浅色保持墨色实色可读 */
+  .page-title-gradient {
+    color: var(--text-1);
+  }
+
+  .dark .page-title-gradient {
+    background-image: linear-gradient(104deg, #f7f5ff 10%, #ddd5ff 54%, #b9e7f4 98%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* 页头眉标：与 Hero 徽标同一套语汇，只做分组提示，不承载数据 */
+  .page-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-4);
+    line-height: 1.4;
+  }
+
+  .pulse-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    animation: pulse-ring 2.4s var(--ease-standard) infinite;
+  }
+
+  /* 侧栏条目：选中态只用「主色底 + 2px 主色条」，不再叠描边 */
+  .nav-item {
+    position: relative;
+  }
+
+  .nav-item[data-active="true"]::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 50%;
+    height: 18px;
+    width: 2px;
+    transform: translateY(-50%);
+    border-radius: 999px;
+    background: var(--accent-soft);
   }
 
   /* 主按钮：内高光 + 短落影，按下时切换为内阴影 */
@@ -287,6 +630,1214 @@
     outline: 2px solid var(--ring);
     outline-offset: -2px;
   }
+
+  /* ==========================================================================
+     管理端块状体系（对齐原型 03）
+     统计卡 / 面板 / 技能卡共用一层「表面」：细描边 + 顶部内高光 + 大范围落影，
+     让每个模块在深色画布上都能看出独立的一块，而不是浮在背景上的文字。
+     ========================================================================== */
+  .admin-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .admin-stat-card {
+    position: relative;
+    display: flex;
+    min-height: 106px;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 13px 14px 14px;
+    border: 1px solid var(--line-1);
+    border-radius: 14px;
+    background-color: var(--surface-1);
+    background-image:
+      radial-gradient(130px 74px at 16% 0%, color-mix(in oklab, var(--accent-base) 9%, transparent), transparent 72%),
+      linear-gradient(158deg, var(--surface-1), color-mix(in oklab, var(--surface-2) 66%, var(--surface-1)) 62%, var(--surface-1));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.6),
+      0 1px 2px rgb(16 24 40 / 0.04),
+      0 18px 36px -30px rgb(16 24 40 / 0.35);
+    transition:
+      border-color var(--t-tap),
+      transform var(--t-tap) var(--ease-out-expo);
+  }
+
+  .admin-stat-card:hover {
+    border-color: var(--line-2);
+    transform: translateY(-1px);
+  }
+
+  .dark .admin-stat-card {
+    background-image:
+      radial-gradient(150px 84px at 16% 0%, rgb(255 255 255 / 0.075), transparent 72%),
+      linear-gradient(158deg, rgb(255 255 255 / 0.078), rgb(255 255 255 / 0.024) 58%, rgb(255 255 255 / 0.008));
+    border-color: rgb(255 255 255 / 0.08);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.055),
+      0 1px 2px rgb(0 0 0 / 0.34),
+      0 26px 48px -32px rgb(0 0 0 / 0.95);
+  }
+
+  .admin-stat-top {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .admin-stat-delta {
+    flex: none;
+    padding: 1px 6px;
+    border: 1px solid var(--line-1);
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--surface-2) 70%, transparent);
+    color: var(--text-4);
+    font-size: 9px;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+
+  .admin-stat-delta[data-tone="up"] {
+    border-color: color-mix(in oklab, #34d399 26%, transparent);
+    background: color-mix(in oklab, #34d399 9%, transparent);
+    color: color-mix(in oklab, #34d399 58%, var(--text-2));
+  }
+
+  .admin-stat-icon {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--accent-line);
+    border-radius: 9px;
+    background-color: var(--accent-wash);
+    color: var(--accent-base);
+  }
+
+  .admin-stat-icon[data-tone="cyan"] {
+    border-color: color-mix(in oklab, #22d3ee 32%, transparent);
+    background-color: color-mix(in oklab, #22d3ee 13%, transparent);
+    color: color-mix(in oklab, #22d3ee 62%, var(--text-1));
+  }
+
+  .admin-stat-icon[data-tone="green"] {
+    border-color: color-mix(in oklab, #34d399 32%, transparent);
+    background-color: color-mix(in oklab, #34d399 13%, transparent);
+    color: color-mix(in oklab, #34d399 58%, var(--text-1));
+  }
+
+  .admin-stat-icon[data-tone="amber"] {
+    border-color: color-mix(in oklab, #fbbf24 34%, transparent);
+    background-color: color-mix(in oklab, #fbbf24 14%, transparent);
+    color: color-mix(in oklab, #fbbf24 55%, var(--text-1));
+  }
+
+  .admin-stat-value {
+    position: relative;
+    margin-top: 10px;
+    font-size: 23px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.025em;
+    line-height: 1;
+    color: var(--text-1);
+  }
+
+  .admin-stat-label {
+    position: relative;
+    margin-top: 6px;
+    font-size: 10.5px;
+    color: var(--text-4);
+  }
+
+  .admin-panel {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--line-1);
+    border-radius: 15px;
+    background-color: var(--surface-1);
+    background-image: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--surface-1) 94%, var(--surface-2)),
+      var(--surface-1)
+    );
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.6),
+      0 1px 2px rgb(16 24 40 / 0.04),
+      0 26px 56px -42px rgb(16 24 40 / 0.5);
+  }
+
+  .dark .admin-panel {
+    background-color: #121218;
+    background-image: linear-gradient(180deg, rgb(24 24 32 / 0.96), rgb(14 14 19 / 0.98));
+    border-color: rgb(255 255 255 / 0.09);
+    box-shadow:
+      0 32px 72px -46px rgb(0 0 0 / 0.98),
+      inset 0 1px 0 rgb(255 255 255 / 0.06);
+  }
+
+  .admin-panel-bar {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 15px;
+    border-bottom: 1px solid var(--line-1);
+  }
+
+  .dark .admin-panel-bar {
+    border-bottom-color: rgb(255 255 255 / 0.075);
+    background-image: linear-gradient(180deg, rgb(255 255 255 / 0.042), rgb(255 255 255 / 0.008));
+  }
+
+  /* 面板内的次级块：再降一档亮度的「块中块」，用于详情页表单 / 列表分组 */
+  .admin-subpanel {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--line-1);
+    border-radius: 12px;
+    background-color: color-mix(in oklab, var(--surface-1) 92%, var(--surface-2));
+    background-image: linear-gradient(180deg, rgb(255 255 255 / 0.55), rgb(255 255 255 / 0));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.6),
+      0 10px 24px -22px rgb(16 24 40 / 0.4);
+  }
+
+  .dark .admin-subpanel {
+    background-color: rgb(255 255 255 / 0.034);
+    background-image: linear-gradient(180deg, rgb(255 255 255 / 0.045), rgb(255 255 255 / 0.012));
+    border-color: rgb(255 255 255 / 0.085);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.055),
+      0 16px 32px -28px rgb(0 0 0 / 0.95);
+  }
+
+  .admin-subpanel-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line-1);
+    background-image: linear-gradient(180deg, rgb(255 255 255 / 0.02), transparent);
+  }
+
+  .dark .admin-subpanel-head {
+    border-bottom-color: rgb(255 255 255 / 0.07);
+    background-image: linear-gradient(180deg, rgb(255 255 255 / 0.03), transparent);
+  }
+
+  .admin-tab-strip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 3px;
+    border: 1px solid var(--line-1);
+    border-radius: 10px;
+    background-color: rgb(0 0 0 / 0.18);
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.12);
+  }
+
+  .dark .admin-tab-strip {
+    background-color: rgb(0 0 0 / 0.3);
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.4);
+  }
+
+  .admin-tab-body {
+    padding: 14px;
+  }
+
+  .admin-table-head {
+    display: grid;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--line-1);
+    background-image: linear-gradient(180deg, rgb(255 255 255 / 0.03), rgb(255 255 255 / 0.012));
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-3);
+  }
+
+  .dark .admin-table-head {
+    border-bottom-color: rgb(255 255 255 / 0.07);
+    background-image: linear-gradient(180deg, rgb(0 0 0 / 0.24), rgb(0 0 0 / 0.12));
+  }
+
+  .admin-stat-card--compact {
+    min-height: 88px;
+    padding: 11px 13px 12px;
+  }
+
+  .admin-stat-card--compact .admin-stat-value {
+    margin-top: 8px;
+    font-size: 19px;
+  }
+
+  .admin-panel-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    color: var(--text-1);
+  }
+
+  .admin-panel-subtitle {
+    margin-top: 3px;
+    font-size: 10.5px;
+    line-height: 1.6;
+    color: var(--text-4);
+  }
+
+  .admin-posture-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .admin-posture-cell {
+    position: relative;
+    display: flex;
+    min-height: 74px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    overflow: hidden;
+    padding: 11px 13px;
+    border: 1px solid var(--line-1);
+    border-radius: 12px;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.5),
+      0 12px 26px -24px rgb(16 24 40 / 0.4);
+  }
+
+  .dark .admin-posture-cell {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.03),
+      0 14px 30px -26px rgb(0 0 0 / 0.9);
+  }
+
+  .admin-skill-card {
+    position: relative;
+    display: flex;
+    min-height: 182px;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--line-1);
+    border-radius: 12px;
+    background-color: var(--surface-1);
+    background-image: linear-gradient(
+      162deg,
+      color-mix(in oklab, var(--surface-1) 96%, var(--surface-2)),
+      var(--surface-1)
+    );
+    transition:
+      border-color var(--t-tap),
+      transform var(--t-tap) var(--ease-out-expo),
+      background-color var(--t-tap);
+  }
+
+  .admin-skill-card:hover {
+    border-color: var(--line-3);
+    transform: translateY(-1.5px);
+  }
+
+  .dark .admin-skill-card {
+    background-image: linear-gradient(162deg, rgb(255 255 255 / 0.052), rgb(255 255 255 / 0.014));
+    border-color: rgb(255 255 255 / 0.075);
+    box-shadow: 0 18px 34px -30px rgb(0 0 0 / 0.9);
+  }
+
+  .admin-skill-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(
+      180px 100px at 12% 0%,
+      color-mix(in oklab, var(--accent-base) 14%, transparent),
+      transparent 70%
+    );
+    transition: opacity var(--t-panel);
+  }
+
+  .admin-skill-card:hover::after {
+    opacity: 1;
+  }
+
+  .admin-skill-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    padding: 13px;
+  }
+
+  @media (max-width: 1023px) {
+    .admin-stat-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .admin-skill-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .admin-posture-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 639px) {
+    .admin-skill-grid {
+      grid-template-columns: minmax(0, 1fr);
+      padding: 10px;
+    }
+
+    .admin-stat-card {
+      min-height: 96px;
+    }
+  }
+
+  /* 产物舞台：低对比网格 + 一处环境光，只做「工作台」的空间提示。 */
+  /* 画布平面：双向环境光 + 低对比网格。网格只做「平面感」暗示，
+     不得抢正文的对比度（原型 04 的网格也是这个量级）。 */
+  .artifact-stage {
+    background-color: var(--surface-0);
+    background-image:
+      radial-gradient(900px 520px at 80% -12%, var(--glow-ambient), transparent 60%),
+      radial-gradient(700px 480px at 6% 106%, color-mix(in oklab, var(--glow-ambient) 42%, transparent), transparent 64%),
+      linear-gradient(to right, color-mix(in oklab, var(--line-1) 42%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in oklab, var(--line-1) 42%, transparent) 1px, transparent 1px);
+    background-size: auto, auto, 72px 72px, 72px 72px;
+    background-position: center top, center bottom, center top, center top;
+    background-repeat: no-repeat, no-repeat, repeat, repeat;
+  }
+
+  /* 思考态：conic-gradient 流光描边。只在 SSE 运行期间挂载，停止即卸载。 */
+  /* 依据原型 02-思考态输入框：
+     1px 彩边 + 外扩 15px 高斯模糊彩光，二者共用同一个 conic 角度、6s 匀速旋转。
+     只在 SSE 运行期间挂载 .composer-thinking，结束即卸载。 */
+  .composer-thinking {
+    position: relative;
+    isolation: isolate;
+    animation: thinking-ring 6s linear infinite;
+  }
+
+  .composer-thinking::before,
+  .composer-thinking::after {
+    content: "";
+    position: absolute;
+    border-radius: inherit;
+    background: conic-gradient(
+      from var(--thinking-angle),
+      #6c5ce7 0deg,
+      #22d3ee 90deg,
+      #f472b6 180deg,
+      #fbbf24 260deg,
+      #6c5ce7 360deg
+    );
+    pointer-events: none;
+  }
+
+  /* 外壳本身换成彩边：原型里这 1px padding 就是那圈渐变描边 */
+  .composer-thinking.composer-surface {
+    background-image: conic-gradient(
+      from var(--thinking-angle),
+      #6c5ce7 0deg,
+      #22d3ee 90deg,
+      #f472b6 180deg,
+      #fbbf24 260deg,
+      #6c5ce7 360deg
+    );
+    box-shadow:
+      0 0 26px -6px rgb(124 92 255 / 0.5),
+      0 0 52px -14px rgb(34 211 238 / 0.38),
+      0 26px 64px -30px rgb(16 24 40 / 0.26);
+  }
+
+  .dark .composer-thinking.composer-surface {
+    box-shadow:
+      0 0 30px -6px rgb(124 92 255 / 0.55),
+      0 0 62px -14px rgb(34 211 238 / 0.4),
+      0 26px 64px -30px rgb(0 0 0 / 0.95);
+  }
+
+  /* 外发光：往外扩 10px + 18px 模糊，让光晕真正漏到页面上 */
+  .composer-thinking::before {
+    inset: -10px;
+    z-index: -1;
+    filter: blur(18px);
+    opacity: 0.88;
+  }
+
+  /* 1.5px 锐边：用 mask 只保留边框区域，避免盖住内容 */
+  .composer-thinking::after {
+    inset: -1px;
+    padding: 1.5px;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
+
+  /* 内层顶部补一点从边框渗进来的光，不改变正文底色 */
+  .composer-thinking .composer-inner {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      inset 0 18px 26px -22px rgb(160 140 255 / 0.55);
+  }
+
+  /* 背景发光：在 composer 外再铺一层大范围彩雾，模拟原型里「整块背景被点亮」 */
+  .composer-thinking-ambient {
+    position: absolute;
+    inset: -58px -44px -34px;
+    z-index: -1;
+    pointer-events: none;
+    border-radius: 64px;
+    background-image:
+      radial-gradient(58% 62% at 20% 44%, rgb(108 92 231 / 0.44), transparent 70%),
+      radial-gradient(52% 58% at 78% 56%, rgb(34 211 238 / 0.32), transparent 72%),
+      radial-gradient(44% 52% at 58% 8%, rgb(244 114 182 / 0.24), transparent 74%);
+    filter: blur(24px);
+    animation: thinking-ambient 6s ease-in-out infinite alternate;
+  }
+
+  /* 思考中状态行：13px 圆环 + 文案，与原型 02 完全一致 */
+  .composer-thinking-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 22px;
+    margin: 4px 10px 10px;
+    font-size: 13.5px;
+    line-height: 22px;
+    color: var(--text-3);
+  }
+
+  .composer-thinking-ring {
+    width: 13px;
+    height: 13px;
+    flex: none;
+    border-radius: 50%;
+    border: 1.5px solid color-mix(in oklab, var(--text-1) 18%, transparent);
+    border-top-color: var(--accent-soft);
+    animation: thinking-spin 900ms linear infinite;
+  }
+
+  @keyframes thinking-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes dock-glow-breathe {
+    from {
+      opacity: 0.72;
+      transform: translateY(4px) scale(0.99);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(-2px) scale(1.01);
+    }
+  }
+
+  @keyframes thinking-ambient {
+    from {
+      opacity: 0.55;
+      transform: scale(0.97);
+    }
+    to {
+      opacity: 0.9;
+      transform: scale(1.02);
+    }
+  }
+
+  /* ==========================================================================
+     对话端 Rail + 顶栏（对齐原型 01）
+     空间关系：Rail 是独立全高层，顶栏只属于右侧主内容区。
+     所有颜色走语义令牌，深浅色等价；结构感来自内高光 / 渐变 / 一层落影，
+     不叠加多重硬描边。
+     ========================================================================== */
+  .chat-rail {
+    width: var(--sidebar-width);
+    padding: 14px 12px 12px;
+    border-right: 1px solid var(--line-1);
+    background-color: var(--surface-1);
+    background-image: linear-gradient(180deg, var(--panel-top), var(--panel-bottom));
+    -webkit-backdrop-filter: blur(18px) saturate(120%);
+    backdrop-filter: blur(18px) saturate(120%);
+  }
+
+  .rail-brand {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 6px 14px;
+  }
+
+  .rail-brand-link {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+  }
+
+  .rail-logo {
+    position: relative;
+    width: var(--brand-mark-size, 29px);
+    height: var(--brand-mark-size, 29px);
+    flex: none;
+    border-radius: 9px;
+    background: linear-gradient(140deg, #9a7dff, #6d4bf0 48%, #22d3ee);
+    box-shadow:
+      0 8px 20px -10px rgba(124, 92, 255, 0.95),
+      inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+
+  .rail-logo::before {
+    content: "";
+    position: absolute;
+    inset: 20%;
+    background: #0c0b12;
+    clip-path: polygon(50% 0, 61% 38%, 100% 50%, 61% 62%, 50% 100%, 39% 62%, 0 50%, 39% 38%);
+    opacity: 0.92;
+  }
+
+  .rail-logo::after {
+    content: "";
+    position: absolute;
+    inset: 37%;
+    border-radius: 50%;
+    background: #e9e6ff;
+    box-shadow: 0 0 10px 2px rgba(167, 139, 250, 0.9);
+  }
+
+  .rail-brand-copy {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.05;
+    min-width: 0;
+  }
+
+  .rail-brand-copy strong {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--text-1);
+  }
+
+  .rail-brand-copy small {
+    margin-top: 3px;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 0.32em;
+    color: var(--text-4);
+  }
+
+  .brand-wordmark--lg {
+    --brand-mark-size: 36px;
+  }
+
+  .brand-wordmark--lg .rail-brand-copy strong {
+    font-size: 16px;
+    letter-spacing: 0.08em;
+  }
+
+  .brand-wordmark--lg .rail-brand-copy small {
+    font-size: 9px;
+  }
+
+  .rail-new-chat {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 38px;
+    margin-bottom: 6px;
+    padding: 0 10px;
+    border: 1px solid var(--line-2);
+    border-radius: 10px;
+    background-image: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--surface-3) 42%, transparent),
+      color-mix(in oklab, var(--surface-2) 24%, transparent)
+    );
+    color: var(--text-2);
+    font-size: 12px;
+    text-align: left;
+    box-shadow: inset 0 1px 0 color-mix(in oklab, #ffffff 40%, transparent);
+    cursor: pointer;
+  }
+
+  .dark .rail-new-chat {
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .rail-new-chat:hover {
+    border-color: var(--accent-line);
+    background-image: linear-gradient(180deg, var(--accent-wash), var(--accent-wash));
+    color: var(--text-1);
+  }
+
+  .rail-new-chat-ico {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    flex: none;
+    border-radius: 6px;
+    background: var(--accent-wash);
+    color: var(--accent-soft);
+  }
+
+  .rail-new-chat-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rail-kbd {
+    flex: none;
+    padding: 1px 4px;
+    border: 1px solid var(--line-1);
+    border-radius: 4px;
+    background-color: var(--surface-1);
+    color: var(--text-4);
+    font-size: 9px;
+    line-height: 1.3;
+  }
+
+  .rail-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 2px 0 8px;
+  }
+
+  .rail-label {
+    padding: 14px 9px 5px;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--text-4);
+  }
+
+  .conversation-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .conv-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: var(--text-3);
+    transition:
+      background-color var(--t-tap) var(--ease-soft),
+      border-color var(--t-tap) var(--ease-soft),
+      color var(--t-tap) var(--ease-soft);
+  }
+
+  .conv-item:hover {
+    background-color: color-mix(in oklab, var(--surface-2) 72%, transparent);
+    color: var(--text-2);
+  }
+
+  .conv-item.is-active {
+    background-image: linear-gradient(90deg, rgba(124, 92, 255, 0.16), rgba(124, 92, 255, 0.04));
+    border-color: rgba(124, 92, 255, 0.18);
+    color: var(--text-1);
+  }
+
+  .conv-hit {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    padding: 7px 4px 7px 8px;
+    border: 0;
+    background: none;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .conv-ico {
+    display: grid;
+    place-items: center;
+    color: var(--text-4);
+  }
+
+  .conv-item.is-active .conv-ico {
+    color: var(--accent-soft);
+  }
+
+  .conv-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.35;
+  }
+
+  .conv-copy strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11.5px;
+    font-weight: 450;
+  }
+
+  .conv-copy small {
+    margin-top: 2px;
+    font-size: 9.5px;
+    color: var(--text-4);
+  }
+
+  .conv-more {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 28px;
+    margin-right: 2px;
+    flex: none;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-4);
+    opacity: 0;
+    cursor: pointer;
+    transition:
+      opacity var(--t-tap) var(--ease-soft),
+      background-color var(--t-tap) var(--ease-soft),
+      color var(--t-tap) var(--ease-soft);
+  }
+
+  .conv-item:hover .conv-more,
+  .conv-more:focus-visible,
+  .conv-more[data-state="open"] {
+    opacity: 1;
+  }
+
+  .conv-more:hover {
+    background-color: var(--surface-2);
+    color: var(--text-1);
+  }
+
+  @media (hover: none) {
+    .conv-more {
+      opacity: 1;
+    }
+  }
+
+  .conv-edit {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 6px;
+    border-radius: 8px;
+    background-color: color-mix(in oklab, var(--surface-2) 60%, transparent);
+  }
+
+  .conv-edit-btn {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 26px;
+    flex: none;
+    border-radius: 6px;
+    color: var(--text-3);
+    cursor: pointer;
+  }
+
+  .conv-edit-btn:hover {
+    background-color: var(--surface-1);
+    color: var(--text-1);
+  }
+
+  .rail-empty {
+    margin: 6px 2px;
+    padding: 10px;
+    border-radius: 8px;
+    background-color: color-mix(in oklab, var(--surface-2) 60%, transparent);
+    color: var(--text-3);
+    font-size: 11px;
+    line-height: 1.6;
+  }
+
+  .rail-foot {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line-1);
+  }
+
+  .admin-entry {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px;
+    border: 1px solid var(--line-1);
+    border-radius: 10px;
+    background-image: linear-gradient(120deg, rgba(124, 92, 255, 0.09), rgba(34, 211, 238, 0.03));
+  }
+
+  .admin-entry:hover {
+    border-color: var(--accent-line);
+    background-image: linear-gradient(120deg, rgba(124, 92, 255, 0.16), rgba(34, 211, 238, 0.05));
+  }
+
+  .admin-entry-ico {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    flex: none;
+    border-radius: 7px;
+    background-color: var(--accent-wash);
+    color: var(--accent-soft);
+  }
+
+  .admin-entry-copy {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.3;
+  }
+
+  .admin-entry-copy strong {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text-2);
+  }
+
+  .admin-entry-copy small {
+    margin-top: 1px;
+    font-size: 9.5px;
+    color: var(--text-4);
+  }
+
+  .admin-entry-arrow {
+    display: grid;
+    place-items: center;
+    color: var(--text-4);
+  }
+
+  .rail-user {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    padding: 7px 8px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: none;
+    color: var(--text-2);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .rail-user:hover {
+    background-color: color-mix(in oklab, var(--surface-2) 60%, transparent);
+    border-color: var(--line-1);
+  }
+
+  .rail-user-copy {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.3;
+  }
+
+  .rail-user-copy strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+
+  .rail-user-copy small {
+    margin-top: 1px;
+    font-size: 9.5px;
+    color: var(--text-4);
+  }
+
+  .rail-user-more {
+    display: grid;
+    place-items: center;
+    color: var(--text-4);
+  }
+
+  .avatar-gradient {
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    flex: none;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background-image: linear-gradient(140deg, #8b6bff, #5b3fd6 62%, #3a2a86);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .topbar-avatar {
+    width: 26px;
+    height: 26px;
+    font-size: 10px;
+  }
+
+  /* ---------- 主内容区顶栏 ---------- */
+  .chat-topbar {
+    position: relative;
+    z-index: 30;
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 10px;
+    height: 58px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--line-1);
+    background-color: color-mix(in oklab, var(--surface-0) 78%, transparent);
+    background-image: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--surface-0) 90%, transparent),
+      color-mix(in oklab, var(--surface-0) 58%, transparent)
+    );
+    -webkit-backdrop-filter: blur(16px) saturate(120%);
+    backdrop-filter: blur(16px) saturate(120%);
+  }
+
+  .topbar-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    font-size: 11.5px;
+    color: var(--text-4);
+  }
+
+  .topbar-crumb {
+    color: var(--text-4);
+  }
+
+  .topbar-slash {
+    color: var(--line-3);
+  }
+
+  .topbar-title strong {
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-2);
+  }
+
+  .live-dot {
+    width: 5px;
+    height: 5px;
+    flex: none;
+    border-radius: 50%;
+    background-color: var(--success);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--success) 12%, transparent);
+  }
+
+  .live-dot.is-preview {
+    background-color: var(--warning);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--warning) 12%, transparent);
+  }
+
+  .live-dot.is-idle {
+    background-color: var(--text-4);
+    box-shadow: none;
+  }
+
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .model-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 29px;
+    padding: 0 9px;
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    background-color: color-mix(in oklab, var(--surface-2) 55%, transparent);
+    color: var(--text-2);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .model-orb {
+    width: 13px;
+    height: 13px;
+    flex: none;
+    border-radius: 50%;
+    background: conic-gradient(from 210deg, #8b6bff, #22d3ee, #f472b6, #8b6bff);
+    box-shadow:
+      0 0 0 2px rgba(124, 92, 255, 0.14),
+      inset 0 0 4px rgba(255, 255, 255, 0.5);
+  }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 26px;
+    padding: 0 9px;
+    border: 1px solid var(--line-1);
+    border-radius: 999px;
+    background-color: color-mix(in oklab, var(--surface-2) 35%, transparent);
+    color: var(--text-4);
+    font-size: 10.5px;
+    white-space: nowrap;
+  }
+
+  .status-dot {
+    width: 5px;
+    height: 5px;
+    flex: none;
+    border-radius: 50%;
+    background-color: var(--success);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--success) 12%, transparent);
+  }
+
+  .status-dot.is-preview {
+    background-color: var(--warning);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--warning) 12%, transparent);
+  }
+
+  .status-dot.is-idle {
+    background-color: var(--text-4);
+    box-shadow: none;
+  }
+
+  .topbar-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    flex: none;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: none;
+    color: var(--text-3);
+    cursor: pointer;
+  }
+
+  .topbar-icon:hover {
+    border-color: var(--line-1);
+    background-color: color-mix(in oklab, var(--surface-2) 70%, transparent);
+    color: var(--text-1);
+  }
+
+  .topbar-skills {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 9px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: none;
+    color: var(--text-3);
+    font-size: 11px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .topbar-skills:hover {
+    border-color: var(--line-1);
+    background-color: color-mix(in oklab, var(--surface-2) 70%, transparent);
+    color: var(--text-1);
+  }
+
+  @media (max-width: 900px) {
+    .chat-topbar {
+      padding: 0 14px;
+    }
+
+    .topbar-title strong {
+      max-width: 180px;
+    }
+  }
+
+  @media (max-width: 639px) {
+    .topbar-crumb,
+    .topbar-slash {
+      display: none;
+    }
+
+    .topbar-title strong {
+      max-width: 150px;
+    }
+
+    .topbar-actions {
+      gap: 4px;
+    }
+
+    .model-pill {
+      height: 28px;
+      padding: 0 8px;
+    }
+  }
+
+}
+
+@property --thinking-angle {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+
+@keyframes thinking-ring {
+  to {
+    --thinking-angle: 360deg;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent-soft) 40%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 
 @keyframes message-in {
@@ -340,7 +1891,9 @@
   }
 
   .animate-message-in,
-  .animate-pulse {
+  .animate-pulse,
+  .brand-art-float,
+  .pulse-dot {
     animation: none;
   }
 
@@ -353,5 +1906,530 @@
 
   .ui-pressable:active:not(:disabled):not([aria-disabled="true"]) {
     transform: none;
+  }
+
+  .composer-thinking,
+  .composer-thinking::before,
+  .composer-thinking::after,
+  .composer-thinking-ambient,
+  .composer-thinking-ring,
+  .chat-composer-dock:has(.composer-thinking)::before {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   过程时间线（思考 / 工具调用 / 用户确认）
+   视觉基线：03-智能体平台原型 styles.css「思考」「工具调用」
+   ============================================================ */
+.process-card {
+  border: 1px solid var(--line-1);
+  border-radius: 14px;
+  padding: 0 13px;
+  overflow: hidden;
+  background: linear-gradient(160deg, color-mix(in oklab, var(--text-1) 4%, transparent), transparent 62%);
+  transition: border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.dark .process-card {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012) 60%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.process-card.is-active {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent-soft) 10%, transparent),
+    0 16px 40px -28px var(--accent-soft);
+}
+
+.process-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 11px 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+
+.process-head:hover {
+  color: var(--text-1);
+}
+
+.process-head:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 3px;
+}
+
+.process-orb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 999px;
+  background: conic-gradient(
+    from 0deg,
+    rgba(167, 139, 250, 0.95),
+    rgba(34, 211, 238, 0.8),
+    rgba(244, 114, 182, 0.7),
+    rgba(167, 139, 250, 0.95)
+  );
+  box-shadow: 0 4px 14px -8px rgba(124, 92, 255, 0.95);
+}
+
+.process-orb::before {
+  content: "";
+  position: absolute;
+  inset: 1.5px;
+  border-radius: 999px;
+  background: var(--surface-1);
+}
+
+.dark .process-orb::before {
+  background: #141419;
+}
+
+.process-orb svg {
+  position: relative;
+  z-index: 1;
+  width: 12px;
+  height: 12px;
+  color: #c4b5fd;
+}
+
+.process-orb.is-live {
+  animation: process-orb-spin 7s linear infinite;
+}
+
+.process-orb.is-done {
+  background: color-mix(in oklab, var(--success) 20%, transparent);
+  box-shadow: none;
+}
+
+.process-orb.is-done::before {
+  background: transparent;
+}
+
+.process-orb.is-done svg {
+  color: var(--success);
+}
+
+/* 挂起（等待用户确认 / 作答）：过程卡保持活动视觉，但用警告色区分「还没答完」 */
+.process-card.is-suspended {
+  border-color: color-mix(in oklab, var(--warning) 32%, var(--line-1));
+}
+
+.process-orb.is-waiting {
+  background: color-mix(in oklab, var(--warning) 26%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--warning) 12%, transparent);
+  animation: none;
+}
+
+.process-orb.is-waiting::before {
+  background: transparent;
+}
+
+.process-orb.is-waiting svg {
+  color: var(--warning);
+}
+
+@keyframes process-orb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.process-title {
+  flex: none;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.process-duration {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-4);
+}
+
+.process-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-4);
+}
+
+.process-dots {
+  display: inline-flex;
+  flex: none;
+  gap: 3px;
+}
+
+.process-dots i {
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  animation: process-dot 1.1s ease-in-out infinite;
+}
+
+.process-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.process-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes process-dot {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.process-chevron {
+  margin-left: auto;
+  flex: none;
+  color: var(--text-4);
+  transition: transform 200ms ease;
+}
+
+.process-body {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 1px 0 13px;
+}
+
+.process-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--text-3);
+}
+
+.process-state {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--success) 14%, transparent);
+  color: var(--success);
+}
+
+.process-state svg {
+  width: 10px;
+  height: 10px;
+}
+
+.process-step.is-live .process-state {
+  background: color-mix(in oklab, var(--accent-soft) 16%, transparent);
+  color: var(--accent-soft);
+  animation: process-throb 1.2s ease-in-out infinite;
+}
+
+.process-live-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+@keyframes process-throb {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.process-text {
+  min-width: 0;
+  flex: 1;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.process-tag {
+  flex: none;
+  margin-top: 3px;
+  padding: 0 5px;
+  border: 1px solid var(--line-1);
+  border-radius: 5px;
+  font-size: 10px;
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+  color: var(--text-4);
+}
+
+.process-tag.is-rag {
+  border-color: color-mix(in oklab, #22d3ee 30%, transparent);
+  color: color-mix(in oklab, #22d3ee 62%, var(--text-1));
+}
+
+.process-tag.is-mcp {
+  border-color: var(--accent-line);
+  color: var(--accent-soft);
+}
+
+/* 工具调用卡：原型 「.tool-call」 */
+.tool-card {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 11px;
+  border: 1px solid var(--line-1);
+  border-radius: 11px;
+  background: var(--surface-2);
+  animation: tool-card-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.dark .tool-card {
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0.012));
+}
+
+@keyframes tool-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.tool-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+}
+
+.tool-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.tool-icon.tone-rag {
+  border-color: color-mix(in oklab, #22d3ee 26%, transparent);
+  background: color-mix(in oklab, #22d3ee 14%, transparent);
+  color: color-mix(in oklab, #22d3ee 72%, var(--text-1));
+}
+
+.tool-icon.tone-mcp {
+  border-color: var(--accent-line);
+  background: var(--accent-wash);
+  color: var(--accent-soft);
+}
+
+.tool-icon.tone-skill {
+  border-color: color-mix(in oklab, #fbbf24 28%, transparent);
+  background: color-mix(in oklab, #fbbf24 14%, transparent);
+  color: color-mix(in oklab, #fbbf24 62%, var(--text-1));
+}
+
+.tool-icon.tone-tool {
+  border-color: var(--line-1);
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+
+.tool-main {
+  min-width: 0;
+}
+
+.tool-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--text-1);
+}
+
+.tool-head-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-state {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-4);
+}
+
+.tool-state.is-done {
+  color: var(--success);
+}
+
+.tool-state.is-error {
+  color: var(--destructive);
+}
+
+.tool-state.is-cancelled {
+  color: var(--muted-foreground);
+}
+
+.tool-state.is-suspended {
+  color: var(--warning);
+}
+
+.tool-card.is-suspended {
+  border-color: color-mix(in oklab, var(--warning) 34%, var(--line-1));
+  background: color-mix(in oklab, var(--warning) 6%, var(--surface-2));
+}
+
+.dark .tool-card.is-suspended {
+  background: linear-gradient(
+    150deg,
+    color-mix(in oklab, var(--warning) 14%, rgba(255, 255, 255, 0.042)),
+    rgba(255, 255, 255, 0.012)
+  );
+}
+
+.tool-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: process-dot 1.2s ease-in-out infinite;
+}
+
+.tool-line {
+  margin-top: 2px;
+  font-family: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--text-4);
+  overflow-wrap: anywhere;
+}
+
+.tool-result {
+  margin-top: 6px;
+  padding: 5px 7px;
+  border: 1px solid var(--line-1);
+  border-radius: 7px;
+  background: color-mix(in oklab, var(--text-1) 4%, transparent);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.dark .tool-result {
+  background: rgba(0, 0, 0, 0.34);
+}
+
+.tool-side {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.tool-time {
+  font-size: 10px;
+  color: var(--text-4);
+  white-space: nowrap;
+}
+
+.tool-toggle {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-4);
+  cursor: pointer;
+}
+
+.tool-toggle:hover {
+  background: color-mix(in oklab, var(--text-1) 6%, transparent);
+  color: var(--text-2);
+}
+
+.tool-toggle:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 1px;
+}
+
+.tool-toggle svg {
+  width: 12px;
+  height: 12px;
+  transition: transform 200ms ease;
+}
+
+.tool-raw {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-1);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.tool-raw-label {
+  margin-bottom: 2px;
+  font-size: 10px;
+  color: var(--text-4);
+}
+
+.tool-raw pre {
+  max-height: 190px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--text-4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .process-orb.is-live,
+  .process-dots i,
+  .process-step.is-live .process-state,
+  .tool-card,
+  .tool-dot {
+    animation: none;
   }
 }

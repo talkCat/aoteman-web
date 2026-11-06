@@ -3,7 +3,18 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { AlertCircle, Copy, MoreHorizontal, RefreshCw, Trash2, Upload } from 'lucide-react';
+import {
+  AlertCircle,
+  Clock3,
+  Copy,
+  FileText,
+  Layers,
+  MoreHorizontal,
+  RefreshCw,
+  Trash2,
+  Upload,
+  Users,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { EmptyState } from '@/components/admin/EmptyState';
@@ -170,6 +181,7 @@ function KnowledgeDetail() {
       }
       try {
         const data = await fetchKnowledgeBaseDetail(kbId);
+        if (!data) throw new Error('知识库不存在或已被删除');
         setDetail(data);
         if (!options.silent) {
           setSettingsName(data.base.name);
@@ -488,46 +500,83 @@ function KnowledgeDetail() {
         }
       />
 
-      <dl className="grid grid-cols-2 gap-4 border-t border-border/60 pt-4 sm:grid-cols-4">
+      <div className="admin-stat-grid">
         {[
-          { label: '文档', value: formatCount(base.documentCount), unit: '份' },
+          {
+            label: '文档',
+            value: formatCount(base.documentCount),
+            unit: '份',
+            badge: '当前版本',
+            tone: 'default',
+            icon: <FileText className="h-4 w-4" aria-hidden="true" />,
+          },
           {
             label: '切片',
             value: base.chunkCount === null ? '—' : formatCount(base.chunkCount),
             unit: '块',
+            badge: '可召回',
+            tone: 'amber',
+            icon: <Layers className="h-4 w-4" aria-hidden="true" />,
           },
-          { label: '授权用户', value: formatCount(base.grantCount), unit: '人' },
-          { label: '最近入库', value: lastIngestAt ? formatDateTime(lastIngestAt) : '—', unit: '' },
+          {
+            label: '授权用户',
+            value: formatCount(base.grantCount),
+            unit: '人',
+            badge: '独立授权',
+            tone: 'green',
+            icon: <Users className="h-4 w-4" aria-hidden="true" />,
+          },
+          {
+            label: '最近入库',
+            value: lastIngestAt ? formatDateTime(lastIngestAt) : '—',
+            unit: '',
+            badge: '时间',
+            tone: 'cyan',
+            icon: <Clock3 className="h-4 w-4" aria-hidden="true" />,
+          },
         ].map((item) => (
-          <div key={item.label}>
-            <dt className="text-[11px] text-muted-foreground">{item.label}</dt>
-            <dd className="mt-0.5 font-mono text-lg tabular-nums">
+          <div key={item.label} className="admin-stat-card admin-stat-card--compact">
+            <div className="admin-stat-top">
+              <span className="admin-stat-icon" data-tone={item.tone} aria-hidden="true">
+                {item.icon}
+              </span>
+              <span className="admin-stat-delta">{item.badge}</span>
+            </div>
+            <strong className="admin-stat-value">
               {item.value}
-              {item.unit && <span className="ml-1 text-[11px] text-muted-foreground">{item.unit}</span>}
-            </dd>
+              {item.unit && <span className="ml-1 text-[11px] font-normal text-fg-4">{item.unit}</span>}
+            </strong>
+            <span className="admin-stat-label">{item.label}</span>
           </div>
         ))}
-      </dl>
+      </div>
 
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="h-auto w-full justify-start gap-1 bg-transparent p-0 md:h-9">
+      <Tabs value={tab} onValueChange={setTab} className="admin-panel">
+        <div className="admin-panel-bar">
+          <div className="min-w-0">
+            <div className="admin-panel-title">文档与配置</div>
+            <div className="admin-panel-subtitle">入库进度、授权范围与切片策略集中在这里维护</div>
+          </div>
+          <TabsList className="admin-tab-strip h-auto justify-start">
           {[
             { value: 'documents', label: '文档' },
             { value: 'grants', label: '授权' },
             { value: 'settings', label: '设置' },
           ].map((item) => (
-            <TabsTrigger
-              key={item.value}
-              value={item.value}
-              className="h-11 rounded-md px-3.5 text-xs md:h-8 md:px-3 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
-            >
-              {item.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        <TabsContent value="documents" className="mt-4 space-y-4">
+              <TabsTrigger
+                key={item.value}
+                value={item.value}
+                className="h-11 rounded-[7px] px-3.5 text-xs text-fg-3 md:h-8 md:px-3 data-[state=active]:bg-accent-wash data-[state=active]:text-accent-base data-[state=active]:shadow-none"
+              >
+                {item.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+        <div className="admin-tab-body space-y-4">
+        <TabsContent value="documents" className="mt-0 space-y-4">
           {activeJobs.length > 0 && (
-            <div className="surface-inset rounded-lg border border-border/70 px-3 py-2.5">
+            <div className="admin-subpanel border-primary/20 px-3.5 py-3">
               <p className="mb-2 text-[11px] text-muted-foreground">
                 有 {activeJobs.length} 份文档正在入库，状态每 3 秒刷新一次
               </p>
@@ -563,21 +612,22 @@ function KnowledgeDetail() {
               }
             />
           ) : (
-            <div className="surface-raised rounded-xl border border-border/70">
-              <div className="hidden grid-cols-[minmax(0,1fr)_88px_72px_92px_128px] items-center gap-3 border-b border-border/60 px-3 py-2 text-[11px] text-muted-foreground md:grid">
+            <div className="admin-subpanel">
+              <div className="admin-table-head hidden grid-cols-[minmax(0,1fr)_88px_72px_92px_128px] md:grid">
                 <span>文档</span>
                 <span className="text-center">状态</span>
                 <span className="text-right">切片</span>
                 <span className="text-right">更新时间</span>
                 <span className="text-right">操作</span>
-              </div>              <ul className="divide-y divide-border/60">
+              </div>
+              <ul className="divide-y divide-line-1">
                 {documents.map((doc) => {
                   const meta = DOC_STATUS[doc.status];
                   const isActive = doc.status === 'PROCESSING' || doc.status === 'UPLOADED';
                   return (
                     <li
                       key={doc.documentId}
-                      className="ui-focus-row relative grid gap-2 px-3 py-3 hover:bg-accent/40 md:grid-cols-[minmax(0,1fr)_88px_72px_92px_128px] md:items-center md:gap-3"
+                      className="ui-focus-row relative grid gap-2 px-3 py-3 hover:bg-surface-2/50 md:grid-cols-[minmax(0,1fr)_88px_72px_92px_128px] md:items-center md:gap-3"
                     >
                       <div className={cn('min-w-0', doc.status !== 'FAILED' && 'pr-12 md:pr-0')}>
                         <div className="flex flex-wrap items-center gap-2">
@@ -717,28 +767,40 @@ function KnowledgeDetail() {
           <p className="text-[11px] text-muted-foreground">
             覆盖上传会生成新版本；旧版本在切换为「当前召回」前，检索仍使用原版本。
           </p>
-        </TabsContent>        <TabsContent value="grants" className="mt-4 max-w-3xl space-y-4">
-          <div className="surface-inset rounded-lg border border-border/60 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-            授权用户才能检索该知识库；专家绑定的知识库仍会再按专家授权过滤一次。
-          </div>
-          <UserGrantPicker users={detail.allUsers} value={grantsDraft} onChange={setGrantsDraft} />
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={!grantsDirty || savingGrants}
-              onClick={() => setGrantsDraft(detail.users)}
-            >
-              撤销更改
-            </Button>
-            <Button size="sm" onClick={() => void saveGrants()} disabled={!grantsDirty || savingGrants}>
-              {savingGrants ? '保存中…' : '保存授权'}
-            </Button>
+        </TabsContent>
+
+        <TabsContent value="grants" className="mt-0 max-w-3xl space-y-4">
+          <div className="admin-subpanel">
+            <div className="admin-subpanel-head">
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold">授权用户</h3>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                  授权用户才能检索该知识库；专家绑定的知识库仍会再按专家授权过滤一次。
+                </p>
+              </div>
+              <StatusBadge tone="muted" label={`${grantsDraft.length} 人`} />
+            </div>
+            <div className="p-3.5">
+              <UserGrantPicker users={detail.allUsers} value={grantsDraft} onChange={setGrantsDraft} />
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-line-1 px-3.5 py-2.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={!grantsDirty || savingGrants}
+                onClick={() => setGrantsDraft(detail.users)}
+              >
+                撤销更改
+              </Button>
+              <Button size="sm" onClick={() => void saveGrants()} disabled={!grantsDirty || savingGrants}>
+                {savingGrants ? '保存中…' : '保存授权'}
+              </Button>
+            </div>
           </div>
         </TabsContent>
 
-        <TabsContent value="settings" className="mt-4 space-y-6">
-          <section className="space-y-3" aria-labelledby="kb-basic-heading">
+        <TabsContent value="settings" className="mt-0 max-w-3xl space-y-4">
+          <section className="admin-subpanel space-y-4 p-4 sm:p-5" aria-labelledby="kb-basic-heading">
             <h3 id="kb-basic-heading" className="text-sm font-medium">
               基本信息
             </h3>
@@ -754,7 +816,7 @@ function KnowledgeDetail() {
               </div>
               <div className="space-y-1.5">
                 <Label>Embedding 模型</Label>
-                <div className="flex h-9 items-center rounded-md border border-border bg-muted/40 px-3 font-mono text-[11px] text-muted-foreground">
+                <div className="surface-inset flex h-9 items-center rounded-md px-3 font-mono text-[11px] text-fg-3">
                   {embedding.modelName} · {embedding.dimension} 维
                 </div>
               </div>
@@ -783,8 +845,8 @@ function KnowledgeDetail() {
                     key={option.value}
                     htmlFor={`kb-strategy-${option.value}`}
                     className={cn(
-                      'ui-interactive ui-focus-row cursor-pointer rounded-md border border-border p-2.5 hover:border-primary/40',
-                      settingsStrategy === option.value && 'border-primary/60 bg-primary/5',
+                      'ui-interactive ui-focus-row cursor-pointer rounded-lg border border-line-1 p-2.5 hover:border-accent-line',
+                      settingsStrategy === option.value && 'border-accent-line bg-accent-wash',
                     )}
                   >
                     <span className="flex items-center gap-2 text-xs font-medium">
@@ -814,7 +876,7 @@ function KnowledgeDetail() {
             </div>
           </section>
 
-          <section className="space-y-3 border-t border-border/60 pt-4" aria-labelledby="kb-danger-heading">
+          <section className="admin-subpanel space-y-3 p-4 sm:p-5" aria-labelledby="kb-danger-heading">
             <h3 id="kb-danger-heading" className="text-sm font-medium">
               危险操作
             </h3>
@@ -835,7 +897,10 @@ function KnowledgeDetail() {
             </div>
           </section>
         </TabsContent>
-      </Tabs>      <UploadDocumentDialog
+        </div>
+      </Tabs>
+
+      <UploadDocumentDialog
         open={uploadOpen}
         onOpenChange={(open) => {
           setUploadOpen(open);

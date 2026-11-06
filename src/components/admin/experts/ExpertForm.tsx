@@ -531,7 +531,7 @@ export function ExpertForm({ mode, expertId }: { mode: 'new' | 'edit'; expertId?
         }
       />
 
-      <details className="surface-raised rounded-xl border border-border bg-card lg:hidden">
+      <details className="card-elevated rounded-xl lg:hidden">
         <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
           <span className="flex items-center gap-2">
             {blockingCount > 0 || warningCount > 0 ? (
@@ -557,7 +557,7 @@ export function ExpertForm({ mode, expertId }: { mode: 'new' | 'edit'; expertId?
                 : '可发布'}
           </span>
         </summary>
-        <div className="border-t border-border/60 p-3">
+        <div className="border-t border-line-1 p-3">
           <ExpertPublishChecklist
             status={status}
             name={draft.name}
@@ -575,30 +575,37 @@ export function ExpertForm({ mode, expertId }: { mode: 'new' | 'edit'; expertId?
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0">
-          <Tabs value={tab} onValueChange={setTab}>
-            <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto bg-transparent p-0 md:h-9">
-              {[
-                { value: 'basic', label: '基本信息' },
-                { value: 'knowledge', label: '知识库' },
-                { value: 'grants', label: '用户授权' },
-                { value: 'resources', label: '技能与 MCP' },
-              ].map((item) => (
-                <TabsTrigger
-                  key={item.value}
-                  value={item.value}
-                  className="h-11 shrink-0 rounded-md px-3.5 text-xs md:h-8 md:px-3 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
-                >
-                  {item.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+          <Tabs value={tab} onValueChange={setTab} className="admin-panel">
+            <div className="admin-panel-bar">
+              <div className="min-w-0">
+                <div className="admin-panel-title">专家配置</div>
+                <div className="admin-panel-subtitle">提示词、知识库、授权与资源按块维护，保存后生效</div>
+              </div>
+              <TabsList className="admin-tab-strip h-auto max-w-full justify-start overflow-x-auto">
+                {[
+                  { value: 'basic', label: '基本信息' },
+                  { value: 'knowledge', label: '知识库' },
+                  { value: 'grants', label: '用户授权' },
+                  { value: 'resources', label: '技能与 MCP' },
+                ].map((item) => (
+                  <TabsTrigger
+                    key={item.value}
+                    value={item.value}
+                    className="h-11 shrink-0 rounded-[7px] px-3.5 text-xs text-fg-3 md:h-8 md:px-3 data-[state=active]:bg-accent-wash data-[state=active]:text-accent-base data-[state=active]:shadow-none"
+                  >
+                    {item.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
+            <div className="admin-tab-body space-y-4">
 
-            <TabsContent value="basic" className="mt-4 space-y-6">
-              <section className="surface-raised rounded-xl border border-border bg-card p-4 sm:p-5" aria-labelledby="expert-basic-heading">
+            <TabsContent value="basic" className="mt-0 space-y-4">
+              <section className="admin-subpanel p-4 sm:p-5" aria-labelledby="expert-basic-heading">
                 <div className="flex items-start gap-4">
                   <Avatar className="h-12 w-12 shrink-0">
                     {draft.avatarUrl.trim() && <AvatarImage src={draft.avatarUrl.trim()} alt="" />}
-                    <AvatarFallback className="bg-primary/10 text-sm font-medium text-primary">
+                    <AvatarFallback className="bg-accent-wash text-sm font-medium text-accent-base">
                       {initialOf(draft.name || '专')}
                     </AvatarFallback>
                   </Avatar>
@@ -670,19 +677,19 @@ export function ExpertForm({ mode, expertId }: { mode: 'new' | 'edit'; expertId?
                 </div>
               </section>
 
-              <section className="surface-raised rounded-xl border border-border bg-card p-4 sm:p-5">
+              <section className="admin-subpanel p-4 sm:p-5">
                 <ExpertPromptEditor
                   value={draft.systemPrompt}
                   onChange={(next) => patch({ systemPrompt: next })}
                 />
-                <p className="mt-3 border-t border-border/60 pt-3 text-[11px] leading-relaxed text-muted-foreground">
+                <p className="mt-3 border-t border-line-1 pt-3 text-[11px] leading-relaxed text-muted-foreground">
                   提示词只作为角色与语气约束，不能覆盖安全、权限与引用规则。
                 </p>
               </section>
             </TabsContent>
 
-            <TabsContent value="knowledge" className="mt-4">
-              <section className="surface-raised rounded-xl border border-border bg-card p-4 sm:p-5" aria-labelledby="expert-knowledge-heading">
+            <TabsContent value="knowledge" className="mt-0">
+              <section className="admin-subpanel p-4 sm:p-5" aria-labelledby="expert-knowledge-heading">
                 <h3 id="expert-knowledge-heading" className="text-sm font-semibold">关联知识库</h3>
                 <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
                   按列表顺序检索；只允许关联启用中的知识库，允许不关联。
@@ -697,8 +704,8 @@ export function ExpertForm({ mode, expertId }: { mode: 'new' | 'edit'; expertId?
               </section>
             </TabsContent>
 
-            <TabsContent value="grants" className="mt-4">
-              <section className="surface-raised rounded-xl border border-border bg-card p-4 sm:p-5" aria-labelledby="expert-grants-heading">
+            <TabsContent value="grants" className="mt-0">
+              <section className="admin-subpanel p-4 sm:p-5" aria-labelledby="expert-grants-heading">
                 <h3 id="expert-grants-heading" className="text-sm font-semibold">用户授权</h3>
                 <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
                   只有被授权的用户能在问答页看到并选择该专家。保存后生效。
@@ -714,7 +721,7 @@ export function ExpertForm({ mode, expertId }: { mode: 'new' | 'edit'; expertId?
               </section>
             </TabsContent>
 
-            <TabsContent value="resources" className="mt-4 space-y-4">
+            <TabsContent value="resources" className="mt-0 space-y-4">
               <CapabilityPlaceholder
                 enabled={false}
                 title="技能"
@@ -732,6 +739,7 @@ export function ExpertForm({ mode, expertId }: { mode: 'new' | 'edit'; expertId?
                 icon={<PlugZap className="h-4 w-4" aria-hidden="true" />}
               />
             </TabsContent>
+            </div>
           </Tabs>
         </div>
 
@@ -753,7 +761,7 @@ export function ExpertForm({ mode, expertId }: { mode: 'new' | 'edit'; expertId?
         </div>
       </div>
 
-      <div className="sticky bottom-0 z-20 -mx-4 flex items-center gap-2 border-t border-border/60 bg-background/95 px-4 py-3 backdrop-blur lg:hidden">
+      <div className="glass-bar sticky bottom-0 z-20 -mx-4 flex items-center gap-2 border-t border-line-1 px-4 py-3 lg:hidden">
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-medium">{draft.name || '未命名专家'}</p>
           <p
@@ -833,13 +841,13 @@ function CapabilityPlaceholder({
   linkLabel?: string;
 }) {
   return (
-    <section className="rounded-lg border border-dashed border-border px-4 py-5" aria-label={`${title}能力状态`}>
+    <section className="rounded-xl border border-dashed border-line-2 bg-surface-1/40 px-4 py-5" aria-label={`${title}能力状态`}>
       <div className="flex items-center gap-2 text-sm font-medium">
-        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground">
+        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-surface-2 text-fg-3">
           {icon}
         </span>
         {title}
-        <span className="rounded border border-border px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+        <span className="rounded border border-line-2 px-1.5 py-0.5 text-[10px] font-normal text-fg-3">
           {enabled ? '待接入' : '未开放'}
         </span>
       </div>
@@ -849,7 +857,7 @@ function CapabilityPlaceholder({
       {!enabled && href && linkLabel && (
         <Link
           href={href}
-          className="ui-interactive ui-focus-ring mt-2 inline-flex items-center gap-1 rounded-sm text-[11px] text-primary underline-offset-2 hover:underline"
+          className="ui-interactive ui-focus-ring mt-2 inline-flex items-center gap-1 rounded-sm text-[11px] text-accent-base underline-offset-2 hover:underline"
         >
           {linkLabel}
           <ExternalLink className="h-3 w-3" aria-hidden="true" />

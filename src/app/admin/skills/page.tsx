@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, Loader2, PackageOpen, RefreshCw, Store } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Layers, Loader2, PackageOpen, RefreshCw, Store } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useAdminUser } from '@/components/admin/AdminUserContext';
+import { PageHeader } from '@/components/admin/PageHeader';
 import { SkillCard } from '@/components/admin/SkillCard';
 import { SkillUpload } from '@/components/admin/SkillUpload';
 import { Button } from '@/components/ui/button';
@@ -129,11 +130,14 @@ export default function SkillsPage() {
   }
 
   const installedSkills = skills.filter((skill) => skill.installed);
+  const availableCount = skills.length - installedSkills.length;
+  const sourceCount = new Set(skills.map((skill) => skill.source || 'unknown')).size;
+  const canManage = isAdmin;
 
   function renderContent(items: SkillItem[], kind: SkillView) {
     if (loading) {
       return (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-busy="true">
+        <div className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3" aria-busy="true">
           {Array.from({ length: 6 }).map((_, index) => (
             <Skeleton key={index} className="h-[196px] rounded-lg" />
           ))}
@@ -143,7 +147,7 @@ export default function SkillsPage() {
 
     if (loadError && skills.length === 0) {
       return (
-        <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="m-3 flex flex-col items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
           <p role="alert" className="flex items-start gap-2 text-sm text-destructive">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             {loadError}
@@ -158,7 +162,7 @@ export default function SkillsPage() {
 
     if (items.length === 0) {
       return (
-        <div className="surface-raised flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border/70 bg-card px-6 py-12 text-center">
+        <div className="m-3 flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-line-2 bg-surface-1/40 px-6 py-12 text-center">
           <PackageOpen className="h-9 w-9 text-muted-foreground/40" aria-hidden="true" />
           {kind === 'installed' ? (
             <>
@@ -167,7 +171,7 @@ export default function SkillsPage() {
                 浏览广场
               </Button>
             </>
-          ) : isAdmin ? (
+          ) : canManage ? (
             <>
               <p className="text-sm text-muted-foreground">还没有技能，点击上传一个 zip 包</p>
               <SkillUpload
@@ -186,7 +190,7 @@ export default function SkillsPage() {
     }
 
     return (
-      <div className="grid gap-px overflow-hidden rounded-lg border border-border/70 bg-border/60 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="admin-skill-grid">
         {items.map((skill) => (
           <SkillCard
             key={skill.name}
@@ -206,19 +210,23 @@ export default function SkillsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          安装后技能会在下一轮对话中可见；卸载会立即影响可用范围。
-          {isAdmin && ' 管理员可上传 zip 包、下载打包或下架技能。'}
-        </p>
-        {isAdmin && (
-          <SkillUpload
-            onUploaded={handleUploaded}
-            uploading={uploading}
-            onUploadingChange={setUploading}
-          />
-        )}
-      </div>
+      <PageHeader
+        title="技能管理"
+        eyebrow="AGENT CAPABILITIES"
+        art={{ src: "/brand/skill-3d.png", width: 320, height: 320 }}
+        description={`安装后技能会在下一轮对话中可见；卸载会立即影响可用范围。${
+          isAdmin ? ' 管理员可上传 zip 包、下载打包或下架技能。' : ''
+        }`}
+        actions={
+          canManage ? (
+            <SkillUpload
+              onUploaded={handleUploaded}
+              uploading={uploading}
+              onUploadingChange={setUploading}
+            />
+          ) : undefined
+        }
+      />
 
       {loadError && skills.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
@@ -232,29 +240,79 @@ export default function SkillsPage() {
         </div>
       )}
 
-      <Tabs value={view} onValueChange={(value) => setView(value as SkillView)}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <TabsList className="h-9">
-            <TabsTrigger value="all" className="gap-1.5 px-3 text-xs sm:text-sm">
-              <Store className="h-3.5 w-3.5" aria-hidden="true" />
-              广场
-            </TabsTrigger>
-            <TabsTrigger value="installed" className="gap-1.5 px-3 text-xs sm:text-sm">
-              <PackageOpen className="h-3.5 w-3.5" aria-hidden="true" />
-              我的技能
-            </TabsTrigger>
-          </TabsList>
-          <span className="text-xs text-muted-foreground">
-            {skills.length} 个技能 · {installedSkills.length} 个已安装
-          </span>
+      <div className="admin-stat-grid">
+        <div className="admin-stat-card">
+          <div className="admin-stat-top">
+            <span className="admin-stat-icon" aria-hidden="true">
+              <Layers className="h-4 w-4" />
+            </span>
+            <span className="admin-stat-delta">{'来自控制面'}</span>
+          </div>
+          <strong className="admin-stat-value">{loading ? '—' : skills.length}</strong>
+          <span className="admin-stat-label">技能总数</span>
         </div>
+        <div className="admin-stat-card">
+          <div className="admin-stat-top">
+            <span className="admin-stat-icon" data-tone="green" aria-hidden="true">
+              <CheckCircle2 className="h-4 w-4" />
+            </span>
+            <span className="admin-stat-delta" data-tone={installedSkills.length > 0 ? 'up' : undefined}>
+              {loading ? '加载中' : installedSkills.length > 0 ? '下一轮可见' : '尚未安装'}
+            </span>
+          </div>
+          <strong className="admin-stat-value">{loading ? '—' : installedSkills.length}</strong>
+          <span className="admin-stat-label">已安装技能</span>
+        </div>
+        <div className="admin-stat-card">
+          <div className="admin-stat-top">
+            <span className="admin-stat-icon" data-tone="cyan" aria-hidden="true">
+              <Store className="h-4 w-4" />
+            </span>
+            <span className="admin-stat-delta">{loading ? '加载中' : '按来源去重'}</span>
+          </div>
+          <strong className="admin-stat-value">{loading ? '—' : sourceCount}</strong>
+          <span className="admin-stat-label">技能来源</span>
+        </div>
+        <div className="admin-stat-card">
+          <div className="admin-stat-top">
+            <span className="admin-stat-icon" data-tone="amber" aria-hidden="true">
+              <PackageOpen className="h-4 w-4" />
+            </span>
+            <span className="admin-stat-delta">{canManage ? '管理员可上传' : '只读'}</span>
+          </div>
+          <strong className="admin-stat-value">{loading ? '—' : availableCount}</strong>
+          <span className="admin-stat-label">可安装技能</span>
+        </div>
+      </div>
 
-        <TabsContent value="all" className="mt-4">
-          {renderContent(skills, 'all')}
-        </TabsContent>
-        <TabsContent value="installed" className="mt-4">
-          {renderContent(installedSkills, 'installed')}
-        </TabsContent>
+      <Tabs value={view} onValueChange={(value) => setView(value as SkillView)}>
+        <div className="admin-panel">
+          <div className="admin-panel-bar">
+            <div className="min-w-0">
+              <div className="admin-panel-title">技能库</div>
+              <div className="admin-panel-subtitle">
+                {skills.length} 个技能 · {installedSkills.length} 个已安装 · 安装后下一轮对话可见
+              </div>
+            </div>
+            <TabsList className="h-9">
+              <TabsTrigger value="all" className="gap-1.5 px-3 text-xs sm:text-sm">
+                <Store className="h-3.5 w-3.5" aria-hidden="true" />
+                广场
+              </TabsTrigger>
+              <TabsTrigger value="installed" className="gap-1.5 px-3 text-xs sm:text-sm">
+                <PackageOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                我的技能
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          <TabsContent value="all" className="mt-0">
+            {renderContent(skills, 'all')}
+          </TabsContent>
+          <TabsContent value="installed" className="mt-0">
+            {renderContent(installedSkills, 'installed')}
+          </TabsContent>
+        </div>
       </Tabs>
 
       {uploading && (

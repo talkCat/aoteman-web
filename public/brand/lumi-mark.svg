@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Lumi">
+  <defs>
+    <linearGradient id="lumi-bg" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9a7dff"/>
+      <stop offset=".48" stop-color="#6d4bf0"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <filter id="lumi-glow" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="3.2"/>
+    </filter>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="url(#lumi-bg)"/>
+  <rect x=".5" y=".5" width="63" height="63" rx="17.5" fill="none" stroke="#fff" stroke-opacity=".18"/>
+  <path d="M32 9.5 39.1 26.9 56.5 32 39.1 37.1 32 54.5 24.9 37.1 7.5 32 24.9 26.9Z" fill="#0c0b12" fill-opacity=".93"/>
+  <circle cx="32" cy="32" r="5.2" fill="#e9e6ff" filter="url(#lumi-glow)" opacity=".85"/>
+  <circle cx="32" cy="32" r="4.2" fill="#e9e6ff"/>
+</svg>

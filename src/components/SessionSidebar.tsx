@@ -1,9 +1,30 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Check, Folder, History, Loader2, MessageSquarePlus, Pencil, Trash2, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  ArrowRight,
+  Check,
+  Loader2,
+  MessageSquare,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  SlidersHorizontal,
+  Trash2,
+  X,
+} from "lucide-react";
+import { BrandWordmark } from "@/components/BrandWordmark";
+import { UserMenu } from "@/components/UserMenu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import type { AuthUser } from "@/lib/auth";
+import { cn } from "@/lib/utils";
 
 /** 侧边栏会话项（与 useSessions 的 SessionSummary 兼容，只取渲染需要的字段）。 */
 export type SessionListItem = {
@@ -14,24 +35,25 @@ export type SessionListItem = {
 
 /** 把毫秒时间戳渲染成「刚刚 / N 分钟前 / 昨天 / N 天前 / M月D日」。 */
 function formatRelativeTime(timestamp: number): string {
-  if (!timestamp) return '';
+  if (!timestamp) return "";
   const diff = Date.now() - timestamp;
-  if (diff < 60_000) return '刚刚';
+  if (diff < 60_000) return "刚刚";
   const minutes = Math.floor(diff / 60_000);
   if (minutes < 60) return `${minutes} 分钟前`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours} 小时前`;
   const days = Math.floor(hours / 24);
-  if (days === 1) return '昨天';
+  if (days === 1) return "昨天";
   if (days < 30) return `${days} 天前`;
   const date = new Date(timestamp);
   return `${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
 /**
- * 最左侧会话导航：顶部「＋ 新会话」，「项目」占位，「历史对话」接真实列表。
+ * 最左侧会话导航（对齐原型 01 的 chat-rail）：
+ * 品牌区 → 开启新对话 → 按「今天 / 更早」分组的真实会话列表 → 管理后台入口 + 用户卡。
  *
- * 每项支持：点击切换、hover 显示「重命名 / 删除」、双击标题行内改名（P3）。
+ * 每项支持：点击切换、悬停「…」菜单重命名 / 删除、双击标题行内改名。
  * 设计依据：doc/design/2026-10-13-会话删除与标题重命名设计.md §5。
  */
 export function SessionSidebar({
@@ -42,6 +64,9 @@ export function SessionSidebar({
   onNew,
   onDelete,
   onRename,
+  user,
+  sessionId,
+  canManage,
   className,
 }: {
   sessions: SessionListItem[];
@@ -53,37 +78,53 @@ export function SessionSidebar({
   onDelete?: (sessionId: string) => void | Promise<void>;
   /** 重命名会话标题，返回是否成功 */
   onRename?: (sessionId: string, title: string) => void | Promise<unknown>;
+  /** 当前登录用户：用于底部用户卡；未登录时不渲染（不伪造身份）。 */
+  user?: AuthUser | null;
+  sessionId?: string;
+  /** 是否展示「管理后台」入口（仅登录用户 / 预览态可见）。 */
+  canManage?: boolean;
   className?: string;
 }) {
   // 行内重命名状态：正在编辑的会话 id 与草稿标题
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [draftTitle, setDraftTitle] = useState('');
+  const [draftTitle, setDraftTitle] = useState("");
   // 正在执行删除 / 重命名的会话 id，用于禁用按钮防重复提交
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const canDelete = typeof onDelete === 'function';
-  const canRename = typeof onRename === 'function';
+  const canDelete = typeof onDelete === "function";
+  const canRename = typeof onRename === "function";
+
+  // 会话按自然日分组：今天 / 更早。时间戳缺失时归入「更早」。
+  const groups = useMemo(() => {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const boundary = startOfToday.getTime();
+    return [
+      { key: "today", label: "今天", items: sessions.filter((s) => (s.updatedAt || 0) >= boundary) },
+      { key: "earlier", label: "更早", items: sessions.filter((s) => (s.updatedAt || 0) < boundary) },
+    ].filter((group) => group.items.length > 0);
+  }, [sessions]);
 
   const startEdit = (session: SessionListItem) => {
     setEditingId(session.sessionId);
-    setDraftTitle(session.title?.trim() || '');
+    setDraftTitle(session.title?.trim() || "");
   };
 
   const cancelEdit = () => {
     setEditingId(null);
-    setDraftTitle('');
+    setDraftTitle("");
   };
 
-  const commitEdit = async (sessionId: string) => {
+  const commitEdit = async (targetSessionId: string) => {
     const next = draftTitle.trim();
     // 空标题不提交（服务端也会 400），直接退出编辑
     if (!next || !onRename) {
       cancelEdit();
       return;
     }
-    setBusyId(sessionId);
+    setBusyId(targetSessionId);
     try {
-      await onRename(sessionId, next);
+      await onRename(targetSessionId, next);
     } finally {
       setBusyId(null);
       cancelEdit();
@@ -92,7 +133,7 @@ export function SessionSidebar({
 
   const handleDelete = async (session: SessionListItem) => {
     if (!onDelete) return;
-    const label = session.title?.trim() || '新会话';
+    const label = session.title?.trim() || "新会话";
     if (!window.confirm(`确定删除会话「${label}」？此操作不可恢复。`)) return;
     setBusyId(session.sessionId);
     try {
@@ -103,160 +144,177 @@ export function SessionSidebar({
   };
 
   return (
-    <aside
-      aria-label="项目与历史对话"
-      className={cn(
-        'surface-sidebar flex w-60 shrink-0 flex-col',
-        className
-      )}
-    >
-      <div className="border-b border-border/60 p-3">
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full justify-start gap-2"
-          onClick={onNew}
-        >
-          <MessageSquarePlus className="h-4 w-4" />
-          新会话
-        </Button>
+    <aside aria-label="会话导航" className={cn("chat-rail flex shrink-0 flex-col", className)}>
+      <div className="rail-brand">
+        <Link href="/" className="rail-brand-link ui-focus-ring rounded-lg" aria-label="灵犀 Lumi 首页">
+          <BrandWordmark />
+        </Link>
       </div>
 
-      <div className="border-b border-border/60 p-3">
-        <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <Folder className="h-3.5 w-3.5" />
-          项目
-        </div>
-        <p className="rounded-md bg-muted/50 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
-          项目即将开放，用于归集同一主题下的多个会话。
-        </p>
-      </div>
+      <button
+        type="button"
+        className="rail-new-chat ui-interactive ui-focus-ring ui-pressable"
+        onClick={onNew}
+      >
+        <span className="rail-new-chat-ico" aria-hidden="true">
+          <Plus className="h-3.5 w-3.5" />
+        </span>
+        <span className="rail-new-chat-label">开启新对话</span>
+        <kbd className="rail-kbd" aria-hidden="true">
+          ⌘K
+        </kbd>
+      </button>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <History className="h-3.5 w-3.5" />
-          历史对话
-        </div>
-
+      <div className="rail-scroll">
         {loading && sessions.length === 0 ? (
-          <div className="flex items-center gap-2 px-1 py-2 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-2 px-2 py-3 text-[11px] text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             加载中…
           </div>
         ) : sessions.length === 0 ? (
-          <p className="rounded-md bg-muted/50 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
-            还没有历史对话，发送第一条消息后会出现在这里。
-          </p>
+          <p className="rail-empty">还没有历史对话，发送第一条消息后会出现在这里。</p>
         ) : (
-          <ul className="space-y-1">
-            {sessions.map((session) => {
-              const active = session.sessionId === currentSessionId;
-              const busy = busyId === session.sessionId;
-              const label = session.title?.trim() || '新会话';
+          groups.map((group) => (
+            <div key={group.key}>
+              <div className="rail-label">{group.label}</div>
+              <nav aria-label={`${group.label}的会话`}>
+                <ul className="conversation-list">
+                  {group.items.map((session) => {
+                    const active = session.sessionId === currentSessionId;
+                    const busy = busyId === session.sessionId;
+                    const label = session.title?.trim() || "新会话";
 
-              if (editingId === session.sessionId) {
-                return (
-                  <li key={session.sessionId}>
-                    <div className="flex items-center gap-1 rounded-md bg-muted/60 px-1.5 py-1.5">
-                      <input
-                        autoFocus
-                        value={draftTitle}
-                        maxLength={100}
-                        placeholder="会话标题"
-                        onChange={(e) => setDraftTitle(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            void commitEdit(session.sessionId);
-                          } else if (e.key === 'Escape') {
-                            e.preventDefault();
-                            cancelEdit();
-                          }
-                        }}
-                        className="ui-interactive ui-focus-field min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-xs text-foreground outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void commitEdit(session.sessionId)}
-                        title="保存"
-                        aria-label="保存标题"
-                        className="ui-interactive ui-focus-ring rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
-                      >
-                        <Check className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={cancelEdit}
-                        title="取消"
-                        aria-label="取消重命名"
-                        className="ui-interactive ui-focus-ring rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </li>
-                );
-              }
+                    if (editingId === session.sessionId) {
+                      return (
+                        <li key={session.sessionId}>
+                          <div className="conv-edit">
+                            <input
+                              autoFocus
+                              value={draftTitle}
+                              maxLength={100}
+                              placeholder="会话标题"
+                              onChange={(e) => setDraftTitle(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  void commitEdit(session.sessionId);
+                                } else if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  cancelEdit();
+                                }
+                              }}
+                              className="ui-interactive ui-focus-field min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-[11.5px] text-foreground outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void commitEdit(session.sessionId)}
+                              title="保存"
+                              aria-label="保存标题"
+                              className="conv-edit-btn ui-interactive ui-focus-ring"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEdit}
+                              title="取消"
+                              aria-label="取消重命名"
+                              className="conv-edit-btn ui-interactive ui-focus-ring"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    }
 
-              return (
-                <li key={session.sessionId} className="group relative">
-                  <button
-                    type="button"
-                    onClick={() => onSelect(session.sessionId)}
-                    onDoubleClick={() => canRename && startEdit(session)}
-                    aria-current={active ? 'true' : undefined}
-                    title={label}
-                    className={cn(
-                      'ui-interactive ui-focus-ring-inset w-full cursor-pointer rounded-md px-2.5 py-2 text-left',
-                      canRename || canDelete ? 'pr-14' : '',
-                      active
-                        ? 'bg-primary/10 text-foreground'
-                        : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                    )}
-                  >
-                    <div className="truncate text-xs font-medium">{label}</div>
-                    <div className="mt-0.5 text-[10px] text-muted-foreground">
-                      {formatRelativeTime(session.updatedAt)}
-                    </div>
-                  </button>
+                    return (
+                      <li key={session.sessionId}>
+                        <div className={cn("conv-item", active && "is-active")}>
+                          <button
+                            type="button"
+                            onClick={() => onSelect(session.sessionId)}
+                            onDoubleClick={() => canRename && startEdit(session)}
+                            aria-current={active ? "true" : undefined}
+                            data-active={active ? "true" : undefined}
+                            title={label}
+                            className="conv-hit ui-focus-ring-inset"
+                          >
+                            <span className="conv-ico" aria-hidden="true">
+                              {busy ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <MessageSquare className="h-3.5 w-3.5" />
+                              )}
+                            </span>
+                            <span className="conv-copy">
+                              <strong>{label}</strong>
+                              <small>{formatRelativeTime(session.updatedAt)}</small>
+                            </span>
+                          </button>
 
-                  {(canRename || canDelete) && (
-                    <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100">
-                      {canRename && (
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => startEdit(session)}
-                          title="重命名"
-                          aria-label="重命名会话"
-                          className="ui-interactive ui-focus-ring rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                      {canDelete && (
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => void handleDelete(session)}
-                          title="删除"
-                          aria-label="删除会话"
-                          className="ui-interactive ui-focus-ring rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-                        >
-                          {busy ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
+                          {(canRename || canDelete) && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  title="会话操作"
+                                  aria-label={`会话「${label}」的操作`}
+                                  className="conv-more ui-interactive ui-focus-ring disabled:opacity-50"
+                                >
+                                  <MoreHorizontal className="h-3.5 w-3.5" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" side="bottom" className="w-36">
+                                {canRename && (
+                                  <DropdownMenuItem onSelect={() => startEdit(session)}>
+                                    <Pencil className="h-3.5 w-3.5" />
+                                    重命名
+                                  </DropdownMenuItem>
+                                )}
+                                {canRename && canDelete && <DropdownMenuSeparator />}
+                                {canDelete && (
+                                  <DropdownMenuItem
+                                    onSelect={() => {
+                                      void handleDelete(session);
+                                    }}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    删除
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           )}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </nav>
+            </div>
+          ))
         )}
+      </div>
+
+      <div className="rail-foot">
+        {canManage && (
+          <Link href="/admin" className="admin-entry ui-interactive ui-focus-ring">
+            <span className="admin-entry-ico" aria-hidden="true">
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+            </span>
+            <span className="admin-entry-copy">
+              <strong>管理后台</strong>
+              <small>技能 · MCP · 知识库</small>
+            </span>
+            <span className="admin-entry-arrow" aria-hidden="true">
+              <ArrowRight className="h-3.5 w-3.5" />
+            </span>
+          </Link>
+        )}
+        <UserMenu variant="row" user={user} sessionId={sessionId} showIdentity />
       </div>
     </aside>
   );

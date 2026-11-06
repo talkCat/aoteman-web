@@ -69,7 +69,7 @@ export function ExpertPublishChecklist({
 
   return (
     <aside
-      className={cn('surface-raised rounded-xl border border-border bg-card p-4', compact && 'rounded-none border-0 bg-transparent p-0', className)}
+      className={cn('admin-panel rounded-xl p-4', compact && 'rounded-none border-0 bg-transparent p-0 shadow-none', className)}
       aria-labelledby="publish-checklist-heading"
     >
       {/* compact 时折叠面板的 summary 已经写了「发布检查」，标题只留给读屏。 */}
@@ -102,7 +102,7 @@ export function ExpertPublishChecklist({
         )}
       </ul>
 
-      <div className="mt-4 border-t border-border/60 pt-3">
+      <div className="mt-4 border-t border-line-1 pt-3">
         <p className="text-[11px] font-medium">发布后</p>
         <ul className="mt-1.5 space-y-1 text-[11px] leading-relaxed text-muted-foreground">
           <li>· 被授权用户可以在问答页选择该专家</li>

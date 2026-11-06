@@ -10,6 +10,7 @@ export interface Identity {
 export type SSEEventType =
   | 'event_start'
   | 'event_delta'
+  | 'preview.snapshot'
   | 'agent.event'
   | 'agent.message'
   | 'agent.citation'
@@ -17,6 +18,7 @@ export type SSEEventType =
   | 'agent.narration'
   | 'user.message'
   | 'agent.tool_use'
+  | 'agent.tool_suspended'
   | 'agent.tool_result'
   | 'agent.skill_use'
   | 'agent.skill_result'
@@ -92,13 +94,16 @@ export interface ToolUse {
   toolCallId?: string;
   name: string;
   input: string;
-  status?: 'pending' | 'success' | 'error';
+  status?: 'pending' | 'suspended' | 'success' | 'error' | 'cancelled';
   output?: string;
   type: 'tool' | 'skill';
   turnId?: number;
   /** 持久化事件序号，用于与中间叙述一起按轮次内时序排列 */
   seq?: number;
   timestamp?: number;
+  /** 工具调用开始 / 结束的落盘时间（毫秒）。仅用于展示真实耗时，缺失则不展示。 */
+  startedAt?: number;
+  finishedAt?: number;
 }
 
 // 工具确认类型
@@ -106,7 +111,7 @@ export interface ToolConfirmation {
   toolCallId: string;
   toolName: string;
   input: Record<string, unknown>;
-  status?: 'pending' | 'allowed' | 'denied';
+  status?: 'pending' | 'allowed' | 'denied' | 'resolved';
   /** 该确认所属轮次，用于在对应轮次内渲染 */
   turnId?: number;
 }

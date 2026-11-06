@@ -43,7 +43,7 @@ function toneOf(behavior: PermissionBaselineBehavior | null): { cell: string; do
   if (behavior === 'allow') return { cell: 'bg-success/10', dot: 'bg-success' };
   if (behavior === 'ask') return { cell: 'bg-warning/10', dot: 'bg-warning' };
   if (behavior === 'deny') return { cell: 'bg-destructive/10', dot: 'bg-destructive' };
-  return { cell: 'bg-muted/40', dot: 'bg-muted-foreground/40' };
+  return { cell: 'bg-surface-2', dot: 'bg-fg-4' };
 }
 
 /**
@@ -69,62 +69,72 @@ export function PermissionPosture({
   ];
 
   return (
-    <section aria-labelledby="permission-posture-heading" className="space-y-2.5">
-      <div className="flex flex-wrap items-baseline justify-between gap-1.5">
-        <h2 id="permission-posture-heading" className="text-sm font-semibold tracking-tight">
-          平台默认策略
-        </h2>
-        <span className="text-[11px] text-muted-foreground">基线 + 兜底</span>
+    <section aria-labelledby="permission-posture-heading" className="admin-panel">
+      <div className="admin-panel-bar">
+        <div className="min-w-0">
+          <h2 id="permission-posture-heading" className="admin-panel-title">
+            平台默认策略
+          </h2>
+          <p className="admin-panel-subtitle">
+            四类工具的基线行为 + 未登记工具的兜底策略；逐项真实行为以下方目录为准。
+          </p>
+        </div>
+        <span className="shrink-0 text-[11px] text-muted-foreground">基线 + 兜底</span>
       </div>
 
-      <div
-        role="list"
-        className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border/70 bg-border sm:grid-cols-3 lg:grid-cols-5"
-      >
-        {loading
-          ? cells.map((cell) => <Skeleton key={cell.key} className="h-[62px] rounded-none" />)
-          : cells.map((cell) => {
-              const tone = toneOf(cell.behavior);
-              return (
-                <div
-                  key={cell.key}
-                  role="listitem"
-                  className={cn(
-                    'flex min-h-[62px] flex-col justify-center gap-1 px-3 py-3',
-                    tone.cell,
-                  )}
-                >
-                  <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-                    <span className={cn('h-1.5 w-1.5 rounded-full', tone.dot)} aria-hidden="true" />
-                    <span className="font-mono tracking-wide">{cell.label}</span>
-                    {cell.isFallback && (
-                      <span className="text-[10px] font-normal text-muted-foreground/80">兜底</span>
-                    )}
-                  </span>
-                  <span className="text-sm font-semibold text-foreground">
-                    {cell.behavior ? BEHAVIOR_TEXT[cell.behavior] : '未登记'}
-                  </span>
-                </div>
-              );
-            })}
-      </div>
+      <div className="space-y-3 p-3">
+        <div role="list" className="admin-posture-grid">
+          {loading
+            ? cells.map((cell) => (
+                <Skeleton key={cell.key} className="h-[74px] rounded-xl" />
+              ))
+            : cells.map((cell) => {
+                const tone = toneOf(cell.behavior);
+                return (
+                  <div
+                    key={cell.key}
+                    role="listitem"
+                    className={cn('admin-posture-cell', tone.cell)}
+                  >
+                    <span className="relative flex items-center gap-1.5 text-[10.5px] font-medium text-muted-foreground">
+                      <span
+                        className={cn('h-1.5 w-1.5 rounded-full', tone.dot)}
+                        aria-hidden="true"
+                      />
+                      <span className="font-mono tracking-wide">{cell.label}</span>
+                      {cell.isFallback && (
+                        <span className="text-[10px] font-normal text-muted-foreground/80">
+                          兜底
+                        </span>
+                      )}
+                    </span>
+                    <span className="relative text-[15px] font-semibold text-foreground">
+                      {cell.behavior ? BEHAVIOR_TEXT[cell.behavior] : '未登记'}
+                    </span>
+                  </div>
+                );
+              })}
+        </div>
 
-      <div className="space-y-1 text-[11px] leading-relaxed text-muted-foreground">
-        <p>
-          可在「我的规则」中把可配置工具收紧为「每次询问 / 拒绝」；shell 内删除不会弹确认，子 Agent
-          不继承询问。
-        </p>
-        <p>
-          「其他」是未登记工具的兜底策略；INTERACT / COORDINATION 类当前放行
-          {unconfigurable.length > 0 && (
-            <>
-              ，{unconfigurable.length} 个未接管工具（如{' '}
-              <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">skill_manage</code>
-              ）恒放行且不可配置
-            </>
-          )}
-          。逐项行为以工具目录为准。
-        </p>
+        <div className="space-y-1 px-1 text-[11px] leading-relaxed text-muted-foreground">
+          <p>
+            可在「我的规则」中把可配置工具收紧为「每次询问 / 拒绝」；shell 内删除不会弹确认，子 Agent
+            不继承询问。
+          </p>
+          <p>
+            「其他」是未登记工具的兜底策略；INTERACT / COORDINATION 类当前放行
+            {unconfigurable.length > 0 && (
+              <>
+                ，{unconfigurable.length} 个未接管工具（如{' '}
+                <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-[10px]">
+                  skill_manage
+                </code>
+                ）恒放行且不可配置
+              </>
+            )}
+            。逐项行为以工具目录为准。
+          </p>
+        </div>
       </div>
     </section>
   );

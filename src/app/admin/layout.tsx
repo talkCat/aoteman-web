@@ -6,7 +6,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   BrainCircuit,
-  FlaskConical,
   LibraryBig,
   Loader2,
   Package,
@@ -27,7 +26,6 @@ import {
 } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { DEMO_ADMIN_USER, resetDemoState } from '@/lib/knowledge-demo';
 import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
@@ -67,8 +65,6 @@ function currentPage(pathname: string): { title: string; href: string } {
     : { title: '权限规则', href: '/admin/permissions' };
 }
 
-const PREVIEW_STORAGE_KEY = 'aoteman-admin-preview';
-
 /**
  * 管理后台外壳：桌面 220px sticky 左栏，移动端顶部水平 Tab。
  * 页面级登录校验 + 子页面共享当前用户，未知用户回登录页（软守卫）。
@@ -85,47 +81,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [navOverflow, setNavOverflow] = useState({ start: false, end: false });
   const page = currentPage(pathname);
 
-  // 静态预览：控制面未启动时也能走查页面。带 ?preview=1 进入，标记存 sessionStorage，
-  // 之后站内跳转保持；生产构建下整段逻辑被 NODE_ENV 判断裁掉，不影响真实鉴权。
-  const [devPreview, setDevPreview] = useState(false);
+  const activeUser = user;
 
   useEffect(() => {
-    if (process.env.NODE_ENV === 'production') return;
-    try {
-      const wantsPreview = new URLSearchParams(window.location.search).get('preview') === '1';
-      if (wantsPreview) {
-        window.sessionStorage.setItem(PREVIEW_STORAGE_KEY, '1');
-        setDevPreview(true);
-        return;
-      }
-      setDevPreview(window.sessionStorage.getItem(PREVIEW_STORAGE_KEY) === '1');
-    } catch {
-      setDevPreview(false);
-    }
-  }, [pathname]);
-
-  const activeUser = user ?? (devPreview ? DEMO_ADMIN_USER : null);
-
-  useEffect(() => {
-    if (!devPreview && ready && !user) {
+    if (ready && !user) {
       router.replace('/login');
     }
-  }, [devPreview, ready, user, router]);
-
-  function exitPreview() {
-    try {
-      window.sessionStorage.removeItem(PREVIEW_STORAGE_KEY);
-    } catch {
-      // 忽略。
-    }
-    setDevPreview(false);
-    router.replace('/admin/knowledge');
-  }
-
-  function resetPreviewData() {
-    resetDemoState();
-    window.location.reload();
-  }
+  }, [ready, user, router]);
 
   // 管理后台的滚动容器是 main，路由切换后手动回到顶部。
   useEffect(() => {
@@ -201,18 +163,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           跳到管理内容
         </a>
 
-        <aside className="surface-sidebar hidden w-[220px] shrink-0 flex-col lg:flex">
-          <div className="flex h-14 items-center gap-2.5 border-b border-border/60 px-5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Sparkles className="h-4 w-4" aria-hidden="true" />
-            </span>
+        <aside className="surface-sidebar hidden w-[232px] shrink-0 flex-col lg:flex">
+          <div className="flex h-14 items-center gap-2.5 px-4">
+            <span className="rail-logo" aria-hidden="true" />
             <div className="min-w-0 leading-tight">
-              <div className="text-sm font-semibold tracking-tight">aoteman</div>
-              <div className="text-[11px] text-muted-foreground">管理后台</div>
+              <div className="text-sm font-semibold tracking-tight">灵犀</div>
+              <div className="text-[11px] text-fg-4">控制台</div>
             </div>
           </div>
 
-          <nav aria-label="管理后台导航" className="flex-1 space-y-1 p-3">
+          <div className="px-4 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.16em] text-fg-4">
+            治理台
+          </div>
+
+          <nav aria-label="管理后台导航" className="flex-1 space-y-0.5 px-2 py-1">
             {NAV_ITEMS.map((item) => {
               const active = pathname.startsWith(item.href);
               const Icon = item.icon;
@@ -221,26 +185,28 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   key={item.href}
                   href={item.href}
                   aria-current={active ? 'page' : undefined}
+                  data-active={active}
                   className={cn(
-                    'ui-interactive ui-focus-ring-inset relative flex items-start gap-2.5 rounded-md px-3 py-2.5 text-sm',
+                    'ui-interactive ui-focus-ring-inset nav-item flex min-h-11 items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 text-sm',
                     active
-                      ? 'bg-primary/10 text-primary shadow-[inset_0_1px_0_rgb(255_255_255/0.45)]'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                      ? 'bg-accent-wash text-fg-1'
+                      : 'text-fg-2 hover:bg-surface-2 hover:text-fg-1',
                   )}
                 >
-                  {active && (
-                    <span
-                      className="absolute left-0 top-2 h-[calc(100%-1rem)] w-0.5 rounded-full bg-primary"
-                      aria-hidden="true"
-                    />
-                  )}
-                  <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span
+                    className={cn(
+                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-md',
+                      active ? 'bg-primary/14 text-primary' : 'bg-surface-2 text-fg-3',
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
                   <span className="min-w-0">
-                    <span className="block font-medium">{item.label}</span>
+                    <span className="block text-[13px] font-medium leading-tight">{item.label}</span>
                     <span
                       className={cn(
-                        'mt-0.5 block text-[11px]',
-                        active ? 'text-primary' : 'text-muted-foreground',
+                        'mt-0.5 block truncate text-[10.5px] leading-tight',
+                        active ? 'text-fg-3' : 'text-fg-4',
                       )}
                     >
                       {item.description}
@@ -251,22 +217,29 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             })}
           </nav>
 
-          <div className="border-t border-border/60 p-4">
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
-              知识库与专家由管理员统一维护，授权到用户；v1 没有组织与角色维度。
+          <div className="px-3 pb-3">
+            <Link
+              href="/"
+              className="ui-interactive ui-focus-ring flex items-center gap-2 rounded-[10px] bg-surface-2/60 px-3 py-2 text-xs text-fg-3 hover:bg-surface-2 hover:text-fg-1"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+              返回对话工作台
+            </Link>
+            <p className="mt-2 px-1 text-[10px] leading-relaxed text-fg-4">
+              知识库与专家按用户授权 · v1 无组织维度
             </p>
           </div>
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="z-30 shrink-0 border-b border-border/60 bg-background/80 backdrop-blur-xl">
+          <header className="glass-bar z-30 shrink-0 border-b border-line-1">
             <div className="flex h-14 items-center justify-between gap-3 px-4 sm:px-6">
               <div className="flex min-w-0 items-center gap-2.5">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary lg:hidden">
                   <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                 </span>
-                <h1 className="truncate text-sm font-semibold tracking-tight">{page.title}</h1>
-                <span className="hidden h-4 w-px bg-border sm:block" aria-hidden="true" />
+                <h1 className="truncate text-sm font-semibold tracking-tight lg:sr-only">{page.title}</h1>
+                <span className="hidden h-4 w-px bg-line-2 sm:block lg:hidden" aria-hidden="true" />
                 <Breadcrumb className="hidden min-w-0 sm:block">
                   <BreadcrumbList className="gap-1.5 text-xs sm:gap-1.5">
                     <BreadcrumbItem>
@@ -307,7 +280,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <nav
               ref={mobileNavRef}
               aria-label="管理后台导航"
-              className="flex items-center gap-1 overflow-x-auto border-t border-border/50 px-3 py-2 [scrollbar-width:none] lg:hidden [&::-webkit-scrollbar]:hidden"
+              className="flex items-center gap-1 overflow-x-auto border-t border-line-1 px-3 py-2 [scrollbar-width:none] lg:hidden [&::-webkit-scrollbar]:hidden"
               style={{ maskImage: navMask, WebkitMaskImage: navMask }}
             >
               {NAV_ITEMS.map((item) => {
@@ -319,10 +292,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     href={item.href}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'ui-interactive ui-focus-ring flex min-h-11 min-w-0 flex-1 basis-0 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-sm font-medium sm:flex-none sm:basis-auto sm:px-3',
+                      'ui-interactive ui-focus-ring flex min-h-11 min-w-0 flex-1 basis-0 items-center justify-center gap-1.5 rounded-[10px] px-2 py-2 text-[13px] font-medium sm:flex-none sm:basis-auto sm:px-3',
                       active
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                        ? 'bg-accent-wash text-fg-1 shadow-[inset_0_1px_0_rgb(255_255_255/0.25)]'
+                        : 'text-fg-3 hover:bg-surface-2 hover:text-fg-1',
                     )}
                   >
                     <Icon className="hidden h-4 w-4 shrink-0 sm:block" aria-hidden="true" />
@@ -331,32 +304,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 );
               })}
             </nav>
-
-            {devPreview && (
-              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-warning/30 bg-warning/10 px-4 py-1.5 text-[11px] text-foreground/80 sm:px-6">
-                <span className="flex items-center gap-1.5">
-                  <FlaskConical className="h-3.5 w-3.5 text-warning" aria-hidden="true" />
-                  <span className="sm:hidden">静态预览</span>
-                  <span className="hidden sm:inline">静态预览：使用本地演示数据，未连接控制面。</span>
-                </span>
-                <span className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={resetPreviewData}
-                    className="ui-interactive ui-focus-ring -mx-1 inline-flex min-h-11 items-center rounded-sm px-1 py-1.5 underline underline-offset-2 hover:text-foreground md:-my-1.5 md:min-h-8"
-                  >
-                    重置演示数据
-                  </button>
-                  <button
-                    type="button"
-                    onClick={exitPreview}
-                    className="ui-interactive ui-focus-ring -mx-1 inline-flex min-h-11 items-center rounded-sm px-1 py-1.5 underline underline-offset-2 hover:text-foreground md:-my-1.5 md:min-h-8"
-                  >
-                    退出预览
-                  </button>
-                </span>
-              </div>
-            )}
           </header>
 
           <main
@@ -365,7 +312,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             tabIndex={-1}
             className="min-h-0 flex-1 overflow-y-auto focus:outline-none"
           >
-            <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+            <div className="mx-auto w-full max-w-[1200px] px-4 pb-16 pt-6 sm:px-6 lg:px-8 lg:pt-8">
               {children}
             </div>
           </main>

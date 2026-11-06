@@ -17,13 +17,15 @@ export function CitationRef({
     citation.headingPath ? ` ${citation.headingPath}` : ''
   }`;
 
+  // 热区只做纵向扩展：横向扩展会让相邻徽标（如 K2 K3）的热区互相遮挡，
+  // 后渲染的徽标会拦截前一个的点击，表现为「点了没反应」。
   return (
     <button
       type="button"
       aria-label={label}
       title={`${citation.kbName} · ${citation.documentTitle}`}
       onClick={() => onActivate?.(citation)}
-      className="surface-chip ui-interactive ui-focus-ring relative inline-flex items-center rounded bg-primary/10 px-1 py-px align-baseline font-mono text-[11px] font-medium text-primary after:absolute after:-inset-x-3 after:-inset-y-2 after:content-[''] hover:bg-primary/15"
+      className="surface-chip ui-interactive ui-focus-ring relative inline-flex items-center rounded bg-primary/10 px-1 py-px align-baseline font-mono text-[11px] font-medium text-primary after:absolute after:inset-x-0 after:-inset-y-2 after:content-[''] hover:bg-primary/15"
     >
       {citation.ref}
     </button>
